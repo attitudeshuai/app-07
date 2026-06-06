@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: points-mall-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: PointsMallDB
+      MYSQL_USER: pointsmall
+      MYSQL_PASSWORD: pointsmall123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - points-mall-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: points-mall-backend
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=PointsMallDB;User=pointsmall;Password=pointsmall123;
+      - Jwt__Key=ThisIsASecretKeyForJwtAuthenticationPointsMall2024
+      - Jwt__Issuer=PointsMall
+      - Jwt__Audience=PointsMallUsers
+    ports:
+      - "5000:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - points-mall-network
+
+volumes:
+  mysql-data:
+
+networks:
+  points-mall-network:
+    driver: bridge
