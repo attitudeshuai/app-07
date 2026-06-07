@@ -103,6 +103,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddScoped<IMemberLevelService, MemberLevelService>();
 builder.Services.AddScoped<IFlashSaleService, FlashSaleService>();
+builder.Services.AddScoped<IFlashSaleReservationService, FlashSaleReservationService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
 builder.Services.AddScoped<ILogisticsService, LogisticsService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
@@ -110,6 +111,7 @@ builder.Services.AddScoped<IPointsService, PointsService>();
 
 builder.Services.AddHostedService<OrderAutoCompleteService>();
 builder.Services.AddHostedService<PointsExpiryBackgroundService>();
+builder.Services.AddHostedService<FlashSaleReminderBackgroundService>();
 
 var app = builder.Build();
 

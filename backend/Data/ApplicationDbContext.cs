@@ -21,6 +21,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Category> Categories { get; set; }
     public DbSet<FlashSale> FlashSales { get; set; }
     public DbSet<FlashSaleUserPurchase> FlashSaleUserPurchases { get; set; }
+    public DbSet<FlashSaleReservation> FlashSaleReservations { get; set; }
+    public DbSet<FlashSaleReminderNotice> FlashSaleReminderNotices { get; set; }
     public DbSet<CheckInRecord> CheckInRecords { get; set; }
     public DbSet<LogisticsTrace> LogisticsTraces { get; set; }
     public DbSet<LogisticsTraceItem> LogisticsTraceItems { get; set; }
@@ -153,6 +155,55 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<FlashSaleUserPurchase>()
             .HasIndex(p => p.MemberUserId);
+
+        modelBuilder.Entity<FlashSaleReservation>()
+            .HasIndex(r => new { r.FlashSaleId, r.MemberUserId })
+            .IsUnique();
+
+        modelBuilder.Entity<FlashSaleReservation>()
+            .HasIndex(r => r.FlashSaleId);
+
+        modelBuilder.Entity<FlashSaleReservation>()
+            .HasIndex(r => r.MemberUserId);
+
+        modelBuilder.Entity<FlashSaleReservation>()
+            .HasIndex(r => r.IsNotified);
+
+        modelBuilder.Entity<FlashSaleReservation>()
+            .HasOne(r => r.FlashSale)
+            .WithMany()
+            .HasForeignKey(r => r.FlashSaleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FlashSaleReservation>()
+            .HasOne(r => r.MemberUser)
+            .WithMany()
+            .HasForeignKey(r => r.MemberUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FlashSaleReminderNotice>()
+            .HasIndex(n => n.MemberUserId);
+
+        modelBuilder.Entity<FlashSaleReminderNotice>()
+            .HasIndex(n => n.FlashSaleId);
+
+        modelBuilder.Entity<FlashSaleReminderNotice>()
+            .HasIndex(n => n.IsRead);
+
+        modelBuilder.Entity<FlashSaleReminderNotice>()
+            .HasIndex(n => n.CreatedAt);
+
+        modelBuilder.Entity<FlashSaleReminderNotice>()
+            .HasOne(n => n.MemberUser)
+            .WithMany()
+            .HasForeignKey(n => n.MemberUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FlashSaleReminderNotice>()
+            .HasOne(n => n.FlashSale)
+            .WithMany()
+            .HasForeignKey(n => n.FlashSaleId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<CheckInRecord>()
             .HasIndex(r => r.MemberUserId);

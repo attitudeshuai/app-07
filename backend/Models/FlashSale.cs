@@ -9,6 +9,7 @@ public class FlashSale
     public int FlashSalePoints { get; set; }
     public int Stock { get; set; }
     public int SoldCount { get; set; } = 0;
+    public int ReservationCount { get; set; } = 0;
     public int LimitPerUser { get; set; } = 1;
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
