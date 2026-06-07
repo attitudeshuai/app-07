@@ -8,6 +8,7 @@ public class MemberUser
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Avatar { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
     public int Points { get; set; } = 0;
     public int TotalPoints { get; set; } = 0;
     public int ContinuousCheckInDays { get; set; } = 0;

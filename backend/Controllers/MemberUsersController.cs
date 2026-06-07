@@ -179,6 +179,7 @@ public class MemberUsersController : ControllerBase
             Phone = dto.Phone,
             Email = dto.Email,
             Avatar = dto.Avatar,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrEmpty(dto.Password) ? "123456" : dto.Password),
             Points = dto.Points,
             TotalPoints = dto.Points,
             Status = dto.Status ?? "Active",
@@ -374,36 +375,6 @@ public class MemberUsersController : ControllerBase
             }
             throw;
         }
-    }
-
-    [HttpPost("{id}/login")]
-    public async Task<ActionResult<ApiResponse<object>>> MemberLogin(int id)
-    {
-        var user = await _context.MemberUsers.FindAsync(id);
-        if (user == null)
-        {
-            return NotFound(ApiResponse.Error<object>("会员用户不存在"));
-        }
-
-        if (user.Status != "Active")
-        {
-            return BadRequest(ApiResponse.Error<object>("会员状态异常，无法登录"));
-        }
-
-        var isFirstLoginToday = !user.LastLoginDate.HasValue || user.LastLoginDate.Value.Date < DateTime.Today;
-
-        user.LastLoginDate = DateTime.Now;
-        user.UpdatedAt = DateTime.Now;
-        await _context.SaveChangesAsync();
-
-        return Ok(ApiResponse.Ok<object>(new
-        {
-            message = "登录成功",
-            userId = user.Id,
-            nickname = user.Nickname,
-            lastLoginDate = user.LastLoginDate,
-            isFirstLoginToday = isFirstLoginToday
-        }));
     }
 
     private bool MemberUserExists(int id)

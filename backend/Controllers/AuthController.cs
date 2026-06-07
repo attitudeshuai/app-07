@@ -47,6 +47,41 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse.Ok(response, "登录成功"));
     }
 
+    [HttpPost("member-login")]
+    public async Task<ActionResult<ApiResponse<LoginResponse>>> MemberLogin([FromBody] LoginRequest request)
+    {
+        var memberUser = await _context.MemberUsers.FirstOrDefaultAsync(u => u.Username == request.Username);
+
+        if (memberUser == null || !BCrypt.Net.BCrypt.Verify(request.Password, memberUser.PasswordHash))
+        {
+            return BadRequest(ApiResponse.Error<LoginResponse>("用户名或密码错误"));
+        }
+
+        if (memberUser.Status != "Active")
+        {
+            return BadRequest(ApiResponse.Error<LoginResponse>("账号已被禁用，请联系客服"));
+        }
+
+        var isFirstLoginToday = !memberUser.LastLoginDate.HasValue || memberUser.LastLoginDate.Value.Date < DateTime.Today;
+
+        memberUser.LastLoginDate = DateTime.Now;
+        memberUser.UpdatedAt = DateTime.Now;
+        await _context.SaveChangesAsync();
+
+        var token = GenerateMemberJwtToken(memberUser);
+        var expiresAt = DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiresInMinutes"] ?? "1440"));
+
+        var response = new LoginResponse
+        {
+            Token = token,
+            Username = memberUser.Username,
+            Role = "Member",
+            ExpiresAt = expiresAt
+        };
+
+        return Ok(ApiResponse.Ok(response, isFirstLoginToday ? "登录成功，今日首次登录可签到" : "登录成功"));
+    }
+
     [HttpPost("init-admin")]
     public async Task<ActionResult<ApiResponse<object>>> InitAdmin()
     {
@@ -84,6 +119,35 @@ public class AuthController : ControllerBase
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Role, user.Role)
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: issuer,
+            audience: audience,
+            claims: claims,
+            expires: DateTime.Now.AddMinutes(expiresInMinutes),
+            signingCredentials: credentials
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private string GenerateMemberJwtToken(MemberUser memberUser)
+    {
+        var key = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key is not configured");
+        var issuer = _configuration["Jwt:Issuer"];
+        var audience = _configuration["Jwt:Audience"];
+        var expiresInMinutes = double.Parse(_configuration["Jwt:ExpiresInMinutes"] ?? "1440");
+
+        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
+        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, memberUser.Id.ToString()),
+            new Claim(ClaimTypes.Name, memberUser.Username),
+            new Claim(ClaimTypes.Role, "Member"),
+            new Claim("MemberUserId", memberUser.Id.ToString())
         };
 
         var token = new JwtSecurityToken(

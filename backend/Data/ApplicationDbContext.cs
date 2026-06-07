@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PointsMall.Models;
+using System.Reflection;
 
 namespace PointsMall.Data;
 
@@ -140,5 +141,85 @@ public class ApplicationDbContext : DbContext
             .WithOne(r => r.MemberUser)
             .HasForeignKey(r => r.MemberUserId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    public static bool IsUniqueConstraintViolation(Exception? ex)
+    {
+        if (ex == null)
+        {
+            return false;
+        }
+
+        var dbUpdateEx = ex as Microsoft.EntityFrameworkCore.DbUpdateException;
+        var innerEx = dbUpdateEx?.InnerException ?? ex.InnerException;
+        if (innerEx == null)
+        {
+            return false;
+        }
+
+        var exceptionType = innerEx.GetType();
+        var typeName = exceptionType.Name;
+
+        try
+        {
+            if (typeName.Contains("MySqlException") || typeName.Contains("MySqlConnectorException"))
+            {
+                var numberProp = exceptionType.GetProperty("Number", BindingFlags.Public | BindingFlags.Instance);
+                if (numberProp != null && numberProp.PropertyType == typeof(int))
+                {
+                    var number = (int)numberProp.GetValue(innerEx)!;
+                    return number == 1062;
+                }
+            }
+
+            if (typeName == "SqlException")
+            {
+                var numberProp = exceptionType.GetProperty("Number", BindingFlags.Public | BindingFlags.Instance);
+                if (numberProp != null && numberProp.PropertyType == typeof(int))
+                {
+                    var number = (int)numberProp.GetValue(innerEx)!;
+                    return number == 2627 || number == 2601;
+                }
+            }
+
+            if (typeName.Contains("NpgsqlException") || typeName.Contains("PostgresException"))
+            {
+                var sqlStateProp = exceptionType.GetProperty("SqlState", BindingFlags.Public | BindingFlags.Instance);
+                if (sqlStateProp != null && sqlStateProp.PropertyType == typeof(string))
+                {
+                    var sqlState = (string)sqlStateProp.GetValue(innerEx)!;
+                    return sqlState == "23505";
+                }
+            }
+
+            if (typeName.Contains("SqliteException"))
+            {
+                var sqliteErrorCodeProp = exceptionType.GetProperty("SqliteErrorCode", BindingFlags.Public | BindingFlags.Instance);
+                if (sqliteErrorCodeProp != null && sqliteErrorCodeProp.PropertyType == typeof(int))
+                {
+                    var code = (int)sqliteErrorCodeProp.GetValue(innerEx)!;
+                    return code == 19;
+                }
+            }
+
+            if (typeName.Contains("OracleException"))
+            {
+                var numberProp = exceptionType.GetProperty("Number", BindingFlags.Public | BindingFlags.Instance);
+                if (numberProp != null)
+                {
+                    var numberValue = numberProp.GetValue(innerEx);
+                    if (numberValue != null)
+                    {
+                        var number = Convert.ToInt32(numberValue);
+                        return number == 1 || number == 2601 || number == -2601;
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
     }
 }

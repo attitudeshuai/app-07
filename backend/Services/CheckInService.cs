@@ -120,7 +120,7 @@ public class CheckInService : ICheckInService
                 await transaction.RollbackAsync();
             }
 
-            if (IsUniqueConstraintViolation(ex))
+            if (ApplicationDbContext.IsUniqueConstraintViolation(ex))
             {
                 return new CheckInResultDto
                 {
@@ -305,19 +305,5 @@ public class CheckInService : ICheckInService
         {
             return 1;
         }
-    }
-
-    private bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        if (ex.InnerException != null)
-        {
-            var message = ex.InnerException.Message.ToLower();
-            return message.Contains("duplicate") ||
-                   message.Contains("unique") ||
-                   message.Contains("duplicate entry") ||
-                   message.Contains("unique constraint") ||
-                   message.Contains("cannot insert duplicate key");
-        }
-        return false;
     }
 }
