@@ -14,4 +14,5 @@ public interface IFlashSaleService
     Task<bool> DeleteAsync(int id);
     Task<ApiResponse<OrderDto>> CreateFlashSaleOrderAsync(CreateFlashSaleOrderDto dto);
     Task ReturnStockAsync(int flashSaleId, int quantity);
+    Task ReturnUserPurchaseAsync(int flashSaleId, int memberUserId, int quantity);
 }

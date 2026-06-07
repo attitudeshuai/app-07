@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<MemberLevel> MemberLevels { get; set; }
     public DbSet<Category> Categories { get; set; }
     public DbSet<FlashSale> FlashSales { get; set; }
+    public DbSet<FlashSaleUserPurchase> FlashSaleUserPurchases { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -112,5 +113,15 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Order>()
             .HasIndex(o => o.FlashSaleId);
+
+        modelBuilder.Entity<FlashSaleUserPurchase>()
+            .HasIndex(p => new { p.FlashSaleId, p.MemberUserId })
+            .IsUnique();
+
+        modelBuilder.Entity<FlashSaleUserPurchase>()
+            .HasIndex(p => p.FlashSaleId);
+
+        modelBuilder.Entity<FlashSaleUserPurchase>()
+            .HasIndex(p => p.MemberUserId);
     }
 }

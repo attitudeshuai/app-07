@@ -271,6 +271,11 @@ public class FlashSaleService : IFlashSaleService
 
         int pointsConsumed = flashSale.FlashSalePoints * dto.Quantity;
 
+        if (memberUser.Points < pointsConsumed)
+        {
+            return ApiResponse.Error<OrderDto>("积分不足，无法兑换");
+        }
+
         var useTransaction = _context.Database.IsRelational();
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
 
@@ -313,27 +318,55 @@ public class FlashSaleService : IFlashSaleService
                 return ApiResponse.Error<OrderDto>("积分不足，无法兑换");
             }
 
-            var userOrderCount = await _context.Orders
-                .Where(o => o.FlashSaleId == flashSale.Id &&
-                            o.MemberUserId == dto.MemberUserId.Value &&
-                            o.Status != "Cancelled" &&
-                            o.Status != "Returned")
-                .SumAsync(o => o.Quantity);
-
-            if (userOrderCount + dto.Quantity > flashSale.LimitPerUser)
+            if (useTransaction)
             {
-                if (transaction != null) await transaction.RollbackAsync();
-                return ApiResponse.Error<OrderDto>($"每人限购 {flashSale.LimitPerUser} 件，您已购买 {userOrderCount} 件");
+                await _context.Database.ExecuteSqlRawAsync(
+                    @"INSERT IGNORE INTO FlashSaleUserPurchases 
+                      (FlashSaleId, MemberUserId, Quantity, CreatedAt, UpdatedAt) 
+                      VALUES ({0}, {1}, 0, NOW(), NOW())",
+                    flashSale.Id, dto.MemberUserId.Value);
+            }
+            else
+            {
+                var exists = await _context.FlashSaleUserPurchases
+                    .AnyAsync(p => p.FlashSaleId == flashSale.Id && p.MemberUserId == dto.MemberUserId.Value);
+                if (!exists)
+                {
+                    _context.FlashSaleUserPurchases.Add(new FlashSaleUserPurchase
+                    {
+                        FlashSaleId = flashSale.Id,
+                        MemberUserId = dto.MemberUserId.Value,
+                        Quantity = 0
+                    });
+                    await _context.SaveChangesAsync();
+                }
             }
 
-            var latestMember = await _context.MemberUsers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == dto.MemberUserId.Value);
+            var purchaseRows = await _context.FlashSaleUserPurchases
+                .Where(p => p.FlashSaleId == flashSale.Id &&
+                            p.MemberUserId == dto.MemberUserId.Value &&
+                            p.Quantity + dto.Quantity <= flashSale.LimitPerUser)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(p => p.Quantity, p => p.Quantity + dto.Quantity)
+                    .SetProperty(p => p.UpdatedAt, p => DateTime.Now));
 
-            if (latestMember == null)
+            if (purchaseRows == 0)
             {
                 if (transaction != null) await transaction.RollbackAsync();
-                return ApiResponse.Error<OrderDto>("会员用户不存在");
+                return ApiResponse.Error<OrderDto>($"每人限购 {flashSale.LimitPerUser} 件，您已达购买上限");
+            }
+
+            int remainingPoints = memberUser.Points - pointsConsumed;
+            if (useTransaction)
+            {
+                var latestPoints = await _context.MemberUsers
+                    .FromSqlRaw("SELECT * FROM MemberUsers WHERE Id = {0} LIMIT 1", dto.MemberUserId.Value)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync();
+                if (latestPoints != null)
+                {
+                    remainingPoints = latestPoints.Points;
+                }
             }
 
             var order = new Order
@@ -366,7 +399,7 @@ public class FlashSaleService : IFlashSaleService
                 MemberUserId = dto.MemberUserId.Value,
                 Type = "Expense",
                 Points = pointsConsumed,
-                Balance = latestMember.Points,
+                Balance = remainingPoints,
                 Source = "FlashSale",
                 OrderNo = order.OrderNo,
                 Remark = $"秒杀兑换: {flashSale.ProductName}",
@@ -420,6 +453,19 @@ public class FlashSaleService : IFlashSaleService
             flashSale.Stock += quantity;
             flashSale.SoldCount = Math.Max(0, flashSale.SoldCount - quantity);
             flashSale.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task ReturnUserPurchaseAsync(int flashSaleId, int memberUserId, int quantity)
+    {
+        var purchase = await _context.FlashSaleUserPurchases
+            .FirstOrDefaultAsync(p => p.FlashSaleId == flashSaleId && p.MemberUserId == memberUserId);
+
+        if (purchase != null)
+        {
+            purchase.Quantity = Math.Max(0, purchase.Quantity - quantity);
+            purchase.UpdatedAt = DateTime.Now;
             await _context.SaveChangesAsync();
         }
     }
