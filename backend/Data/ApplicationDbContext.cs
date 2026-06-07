@@ -253,6 +253,9 @@ public class ApplicationDbContext : DbContext
             .HasIndex(r => r.CreatedAt);
 
         modelBuilder.Entity<ProductReview>()
+            .HasIndex(r => r.IsHidden);
+
+        modelBuilder.Entity<ProductReview>()
             .HasOne(r => r.Product)
             .WithMany(p => p.ProductReviews)
             .HasForeignKey(r => r.ProductId)

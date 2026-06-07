@@ -10,6 +10,9 @@ public class ProductReviewDto
     public string? MemberUserAvatar { get; set; }
     public int Rating { get; set; }
     public string? Content { get; set; }
+    public bool IsHidden { get; set; }
+    public string? MerchantReply { get; set; }
+    public DateTime? MerchantReplyAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -19,6 +22,11 @@ public class CreateProductReviewDto
     public int OrderId { get; set; }
     public int Rating { get; set; }
     public string? Content { get; set; }
+}
+
+public class MerchantReplyDto
+{
+    public string ReplyContent { get; set; } = string.Empty;
 }
 
 public class ProductReviewStatsDto

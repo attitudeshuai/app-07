@@ -36,10 +36,17 @@ public class ProductReviewsController : ControllerBase
             return NotFound(ApiResponse.Error<PagedResult<ProductReviewDto>>("商品不存在"));
         }
 
+        var isAdmin = IsCurrentUserAdmin();
+
         var query = _context.ProductReviews
             .Include(r => r.MemberUser)
             .Where(r => r.ProductId == productId)
             .AsQueryable();
+
+        if (!isAdmin)
+        {
+            query = query.Where(r => !r.IsHidden);
+        }
 
         if (rating.HasValue)
         {
@@ -70,6 +77,9 @@ public class ProductReviewsController : ControllerBase
                 MemberUserAvatar = r.MemberUser != null ? r.MemberUser.Avatar : null,
                 Rating = r.Rating,
                 Content = r.Content,
+                IsHidden = r.IsHidden,
+                MerchantReply = r.MerchantReply,
+                MerchantReplyAt = r.MerchantReplyAt,
                 CreatedAt = r.CreatedAt,
                 UpdatedAt = r.UpdatedAt
             })
@@ -96,9 +106,17 @@ public class ProductReviewsController : ControllerBase
             return NotFound(ApiResponse.Error<ProductReviewStatsDto>("商品不存在"));
         }
 
-        var reviews = await _context.ProductReviews
-            .Where(r => r.ProductId == productId)
-            .ToListAsync();
+        var isAdmin = IsCurrentUserAdmin();
+
+        var query = _context.ProductReviews
+            .Where(r => r.ProductId == productId);
+
+        if (!isAdmin)
+        {
+            query = query.Where(r => !r.IsHidden);
+        }
+
+        var reviews = await query.ToListAsync();
 
         var stats = new ProductReviewStatsDto
         {
@@ -113,6 +131,88 @@ public class ProductReviewsController : ControllerBase
         };
 
         return Ok(ApiResponse.Ok(stats));
+    }
+
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<PagedResult<ProductReviewDto>>>> GetAllReviews(
+        [FromQuery] bool? isHidden = null,
+        [FromQuery] int? rating = null,
+        [FromQuery] int? productId = null,
+        [FromQuery] string? search = null,
+        [FromQuery] string sortBy = "CreatedAt",
+        [FromQuery] string sortOrder = "Desc",
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        var query = _context.ProductReviews
+            .Include(r => r.MemberUser)
+            .Include(r => r.Product)
+            .AsQueryable();
+
+        if (isHidden.HasValue)
+        {
+            query = query.Where(r => r.IsHidden == isHidden.Value);
+        }
+
+        if (rating.HasValue)
+        {
+            query = query.Where(r => r.Rating == rating.Value);
+        }
+
+        if (productId.HasValue)
+        {
+            query = query.Where(r => r.ProductId == productId.Value);
+        }
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(r => r.Content != null && r.Content.Contains(search) ||
+                                     r.MemberUser != null && r.MemberUser.Nickname != null && r.MemberUser.Nickname.Contains(search) ||
+                                     r.Product != null && r.Product.Name.Contains(search));
+        }
+
+        query = sortBy.ToLower() switch
+        {
+            "rating" => sortOrder.Equals("Asc", StringComparison.OrdinalIgnoreCase)
+                ? query.OrderBy(r => r.Rating)
+                : query.OrderByDescending(r => r.Rating),
+            "createdat" or _ => sortOrder.Equals("Asc", StringComparison.OrdinalIgnoreCase)
+                ? query.OrderBy(r => r.CreatedAt)
+                : query.OrderByDescending(r => r.CreatedAt)
+        };
+
+        var total = await query.CountAsync();
+        var reviews = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new ProductReviewDto
+            {
+                Id = r.Id,
+                ProductId = r.ProductId,
+                OrderId = r.OrderId,
+                MemberUserId = r.MemberUserId,
+                MemberUserNickname = r.MemberUser != null ? r.MemberUser.Nickname : null,
+                MemberUserAvatar = r.MemberUser != null ? r.MemberUser.Avatar : null,
+                Rating = r.Rating,
+                Content = r.Content,
+                IsHidden = r.IsHidden,
+                MerchantReply = r.MerchantReply,
+                MerchantReplyAt = r.MerchantReplyAt,
+                CreatedAt = r.CreatedAt,
+                UpdatedAt = r.UpdatedAt
+            })
+            .ToListAsync();
+
+        var result = new PagedResult<ProductReviewDto>
+        {
+            Items = reviews,
+            Total = total,
+            Page = page,
+            PageSize = pageSize
+        };
+
+        return Ok(ApiResponse.Ok(result));
     }
 
     [HttpPost]
@@ -158,7 +258,8 @@ public class ProductReviewsController : ControllerBase
             OrderId = dto.OrderId,
             MemberUserId = memberUserId.Value,
             Rating = dto.Rating,
-            Content = dto.Content
+            Content = dto.Content,
+            IsHidden = false
         };
 
         _context.ProductReviews.Add(review);
@@ -175,11 +276,57 @@ public class ProductReviewsController : ControllerBase
             MemberUserAvatar = memberUser?.Avatar,
             Rating = review.Rating,
             Content = review.Content,
+            IsHidden = review.IsHidden,
+            MerchantReply = review.MerchantReply,
+            MerchantReplyAt = review.MerchantReplyAt,
             CreatedAt = review.CreatedAt,
             UpdatedAt = review.UpdatedAt
         };
 
         return CreatedAtAction(nameof(GetProductReviews), new { productId = review.ProductId }, ApiResponse.Ok(result, "评价发布成功"));
+    }
+
+    [HttpGet("{id}")]
+    public async Task<ActionResult<ApiResponse<ProductReviewDto>>> GetReview(int id)
+    {
+        var review = await _context.ProductReviews
+            .Include(r => r.MemberUser)
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        if (review == null)
+        {
+            return NotFound(ApiResponse.Error<ProductReviewDto>("评价不存在"));
+        }
+
+        var memberUserId = GetCurrentMemberUserId();
+        var isAdmin = IsCurrentUserAdmin();
+
+        if (!isAdmin && (!memberUserId.HasValue || review.MemberUserId != memberUserId.Value))
+        {
+            if (review.IsHidden)
+            {
+                return NotFound(ApiResponse.Error<ProductReviewDto>("评价不存在"));
+            }
+        }
+
+        var dto = new ProductReviewDto
+        {
+            Id = review.Id,
+            ProductId = review.ProductId,
+            OrderId = review.OrderId,
+            MemberUserId = review.MemberUserId,
+            MemberUserNickname = review.MemberUser != null ? review.MemberUser.Nickname : null,
+            MemberUserAvatar = review.MemberUser != null ? review.MemberUser.Avatar : null,
+            Rating = review.Rating,
+            Content = review.Content,
+            IsHidden = review.IsHidden,
+            MerchantReply = review.MerchantReply,
+            MerchantReplyAt = review.MerchantReplyAt,
+            CreatedAt = review.CreatedAt,
+            UpdatedAt = review.UpdatedAt
+        };
+
+        return Ok(ApiResponse.Ok(dto));
     }
 
     [HttpGet("order/{orderId}")]
@@ -221,11 +368,89 @@ public class ProductReviewsController : ControllerBase
             MemberUserAvatar = review.MemberUser != null ? review.MemberUser.Avatar : null,
             Rating = review.Rating,
             Content = review.Content,
+            IsHidden = review.IsHidden,
+            MerchantReply = review.MerchantReply,
+            MerchantReplyAt = review.MerchantReplyAt,
             CreatedAt = review.CreatedAt,
             UpdatedAt = review.UpdatedAt
         };
 
         return Ok(ApiResponse.Ok(dto));
+    }
+
+    [HttpPut("{id}/hide")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<object>>> HideReview(int id)
+    {
+        var review = await _context.ProductReviews.FindAsync(id);
+        if (review == null)
+        {
+            return NotFound(ApiResponse.Error("评价不存在"));
+        }
+
+        review.IsHidden = true;
+        review.UpdatedAt = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok("评价已隐藏"));
+    }
+
+    [HttpPut("{id}/show")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<object>>> ShowReview(int id)
+    {
+        var review = await _context.ProductReviews.FindAsync(id);
+        if (review == null)
+        {
+            return NotFound(ApiResponse.Error("评价不存在"));
+        }
+
+        review.IsHidden = false;
+        review.UpdatedAt = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok("评价已显示"));
+    }
+
+    [HttpPost("{id}/reply")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<ProductReviewDto>>> ReplyReview(int id, [FromBody] MerchantReplyDto dto)
+    {
+        var review = await _context.ProductReviews.FindAsync(id);
+        if (review == null)
+        {
+            return NotFound(ApiResponse.Error<ProductReviewDto>("评价不存在"));
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.ReplyContent))
+        {
+            return BadRequest(ApiResponse.Error<ProductReviewDto>("回复内容不能为空"));
+        }
+
+        review.MerchantReply = dto.ReplyContent;
+        review.MerchantReplyAt = DateTime.Now;
+        review.UpdatedAt = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+
+        var reviewDto = new ProductReviewDto
+        {
+            Id = review.Id,
+            ProductId = review.ProductId,
+            OrderId = review.OrderId,
+            MemberUserId = review.MemberUserId,
+            Rating = review.Rating,
+            Content = review.Content,
+            IsHidden = review.IsHidden,
+            MerchantReply = review.MerchantReply,
+            MerchantReplyAt = review.MerchantReplyAt,
+            CreatedAt = review.CreatedAt,
+            UpdatedAt = review.UpdatedAt
+        };
+
+        return Ok(ApiResponse.Ok(reviewDto, "回复成功"));
     }
 
     [HttpDelete("{id}")]

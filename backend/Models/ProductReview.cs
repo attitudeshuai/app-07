@@ -11,6 +11,9 @@ public class ProductReview
     public MemberUser? MemberUser { get; set; }
     public int Rating { get; set; }
     public string? Content { get; set; }
+    public bool IsHidden { get; set; }
+    public string? MerchantReply { get; set; }
+    public DateTime? MerchantReplyAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }

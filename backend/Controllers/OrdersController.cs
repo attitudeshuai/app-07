@@ -93,7 +93,13 @@ public class OrdersController : ControllerBase
                 ShippedAt = o.ShippedAt,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                HasReview = _context.ProductReviews.Any(r => r.OrderId == o.Id)
+                HasReview = _context.ProductReviews.Any(r => r.OrderId == o.Id),
+                ReviewId = _context.ProductReviews.Where(r => r.OrderId == o.Id).Select(r => (int?)r.Id).FirstOrDefault(),
+                ReviewRating = _context.ProductReviews.Where(r => r.OrderId == o.Id).Select(r => (int?)r.Rating).FirstOrDefault(),
+                ReviewContent = _context.ProductReviews.Where(r => r.OrderId == o.Id).Select(r => r.Content).FirstOrDefault(),
+                ReviewCreatedAt = _context.ProductReviews.Where(r => r.OrderId == o.Id).Select(r => (DateTime?)r.CreatedAt).FirstOrDefault(),
+                MerchantReply = _context.ProductReviews.Where(r => r.OrderId == o.Id).Select(r => r.MerchantReply).FirstOrDefault(),
+                MerchantReplyAt = _context.ProductReviews.Where(r => r.OrderId == o.Id).Select(r => (DateTime?)r.MerchantReplyAt).FirstOrDefault()
             })
             .ToListAsync();
 
@@ -138,6 +144,9 @@ public class OrdersController : ControllerBase
 
         var autoCompleteDays = _configuration.GetValue<int>("OrderAutoComplete:Days", 7);
 
+        var review = await _context.ProductReviews
+            .FirstOrDefaultAsync(r => r.OrderId == order.Id);
+
         var dto = new OrderDto
         {
             Id = order.Id,
@@ -165,7 +174,13 @@ public class OrdersController : ControllerBase
                 Remark = h.Remark,
                 CreatedAt = h.CreatedAt
             }).ToList(),
-            HasReview = await _context.ProductReviews.AnyAsync(r => r.OrderId == order.Id)
+            HasReview = review != null,
+            ReviewId = review?.Id,
+            ReviewRating = review?.Rating,
+            ReviewContent = review?.Content,
+            ReviewCreatedAt = review?.CreatedAt,
+            MerchantReply = review?.MerchantReply,
+            MerchantReplyAt = review?.MerchantReplyAt
         };
 
         if ((order.Status == "Shipped" || order.Status == "PartiallyShipped") && order.ShippedAt.HasValue)

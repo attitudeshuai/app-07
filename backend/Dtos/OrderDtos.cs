@@ -23,6 +23,12 @@ public class OrderDto
     public List<OrderHistoryDto> OrderHistories { get; set; } = new();
     public LogisticsTraceDto? LogisticsTrace { get; set; }
     public bool HasReview { get; set; }
+    public int? ReviewId { get; set; }
+    public int? ReviewRating { get; set; }
+    public string? ReviewContent { get; set; }
+    public DateTime? ReviewCreatedAt { get; set; }
+    public string? MerchantReply { get; set; }
+    public DateTime? MerchantReplyAt { get; set; }
     public int? AutoCompleteDaysLeft { get; set; }
     public List<OrderPackageDto> Packages { get; set; } = new();
 }
