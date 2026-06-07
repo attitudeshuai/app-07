@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using PointsMall.Data;
+using PointsMall.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -78,6 +79,8 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader();
     });
 });
+
+builder.Services.AddScoped<IMemberLevelService, MemberLevelService>();
 
 var app = builder.Build();
 
@@ -164,6 +167,53 @@ using (var scope = app.Services.CreateScope())
         }
         context.SaveChanges();
         Console.WriteLine("Sample member users created successfully");
+    }
+
+    if (!context.MemberLevels.Any())
+    {
+        var defaultLevels = new List<PointsMall.Models.MemberLevel>
+        {
+            new PointsMall.Models.MemberLevel
+            {
+                Name = "青铜",
+                MinPoints = 0,
+                DiscountRate = 1.0m,
+                Description = "初始会员等级，享受基础权益",
+                SortOrder = 1,
+                IsActive = true
+            },
+            new PointsMall.Models.MemberLevel
+            {
+                Name = "白银",
+                MinPoints = 1000,
+                DiscountRate = 0.95m,
+                Description = "白银会员，享受95折优惠",
+                SortOrder = 2,
+                IsActive = true
+            },
+            new PointsMall.Models.MemberLevel
+            {
+                Name = "黄金",
+                MinPoints = 5000,
+                DiscountRate = 0.9m,
+                Description = "黄金会员，享受9折优惠",
+                SortOrder = 3,
+                IsActive = true
+            },
+            new PointsMall.Models.MemberLevel
+            {
+                Name = "钻石",
+                MinPoints = 10000,
+                DiscountRate = 0.8m,
+                Description = "钻石会员，享受8折优惠",
+                SortOrder = 4,
+                IsActive = true
+            }
+        };
+
+        context.MemberLevels.AddRange(defaultLevels);
+        context.SaveChanges();
+        Console.WriteLine("Default member levels created successfully");
     }
 
     if (!context.Products.Any())

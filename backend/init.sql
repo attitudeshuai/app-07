@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS MemberUsers (
     UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS MemberLevels (
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(50) NOT NULL UNIQUE,
+    MinPoints INT NOT NULL DEFAULT 0,
+    DiscountRate DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+    Description TEXT,
+    SortOrder INT NOT NULL DEFAULT 0,
+    IsActive BOOLEAN DEFAULT TRUE,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS PointsRecords (
     Id INT AUTO_INCREMENT PRIMARY KEY,
     MemberUserId INT NOT NULL,
@@ -85,3 +97,19 @@ WHERE NOT EXISTS (SELECT 1 FROM Products WHERE Name = '商务笔记本');
 INSERT INTO Products (Name, Description, PointsRequired, Stock, ImageUrl)
 SELECT '品牌雨伞', '全自动折叠伞，防紫外线', 800, 50, 'https://via.placeholder.com/300'
 WHERE NOT EXISTS (SELECT 1 FROM Products WHERE Name = '品牌雨伞');
+
+INSERT INTO MemberLevels (Name, MinPoints, DiscountRate, Description, SortOrder, IsActive)
+SELECT '青铜', 0, 1.00, '初始会员等级，享受基础权益', 1, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM MemberLevels WHERE Name = '青铜');
+
+INSERT INTO MemberLevels (Name, MinPoints, DiscountRate, Description, SortOrder, IsActive)
+SELECT '白银', 1000, 0.95, '白银会员，享受95折优惠', 2, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM MemberLevels WHERE Name = '白银');
+
+INSERT INTO MemberLevels (Name, MinPoints, DiscountRate, Description, SortOrder, IsActive)
+SELECT '黄金', 5000, 0.90, '黄金会员，享受9折优惠', 3, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM MemberLevels WHERE Name = '黄金');
+
+INSERT INTO MemberLevels (Name, MinPoints, DiscountRate, Description, SortOrder, IsActive)
+SELECT '钻石', 10000, 0.80, '钻石会员，享受8折优惠', 4, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM MemberLevels WHERE Name = '钻石');

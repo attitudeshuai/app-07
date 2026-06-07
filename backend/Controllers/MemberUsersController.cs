@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PointsMall.Data;
 using PointsMall.Dtos;
 using PointsMall.Models;
+using PointsMall.Services;
 
 namespace PointsMall.Controllers;
 
@@ -13,10 +14,12 @@ namespace PointsMall.Controllers;
 public class MemberUsersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IMemberLevelService _memberLevelService;
 
-    public MemberUsersController(ApplicationDbContext context)
+    public MemberUsersController(ApplicationDbContext context, IMemberLevelService memberLevelService)
     {
         _context = context;
+        _memberLevelService = memberLevelService;
     }
 
     [HttpGet]
@@ -60,21 +63,30 @@ public class MemberUsersController : ControllerBase
             .Select(g => new { MemberUserId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.MemberUserId, x => x.Count);
 
-        var dtos = users.Select(u => new MemberUserDto
+        var levels = await _memberLevelService.GetActiveLevelsAsync();
+        var levelsSorted = levels.OrderByDescending(l => l.MinPoints).ToList();
+
+        var dtos = users.Select(u =>
         {
-            Id = u.Id,
-            Username = u.Username,
-            Nickname = u.Nickname,
-            Phone = u.Phone,
-            Email = u.Email,
-            Avatar = u.Avatar,
-            Points = u.Points,
-            TotalPoints = u.TotalPoints,
-            Status = u.Status,
-            CreatedAt = u.CreatedAt,
-            UpdatedAt = u.UpdatedAt,
-            OrderCount = orderCounts.TryGetValue(u.Id, out var oc) ? oc : 0,
-            PointsRecordCount = pointsRecordCounts.TryGetValue(u.Id, out var prc) ? prc : 0
+            var level = levelsSorted.FirstOrDefault(l => l.MinPoints <= u.TotalPoints);
+            return new MemberUserDto
+            {
+                Id = u.Id,
+                Username = u.Username,
+                Nickname = u.Nickname,
+                Phone = u.Phone,
+                Email = u.Email,
+                Avatar = u.Avatar,
+                Points = u.Points,
+                TotalPoints = u.TotalPoints,
+                Status = u.Status,
+                CreatedAt = u.CreatedAt,
+                UpdatedAt = u.UpdatedAt,
+                OrderCount = orderCounts.TryGetValue(u.Id, out var oc) ? oc : 0,
+                PointsRecordCount = pointsRecordCounts.TryGetValue(u.Id, out var prc) ? prc : 0,
+                LevelName = level?.Name ?? string.Empty,
+                DiscountRate = level?.DiscountRate ?? 1.0m
+            };
         }).ToList();
 
         var result = new PagedResult<MemberUserDto>
@@ -115,8 +127,17 @@ public class MemberUsersController : ControllerBase
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
             OrderCount = user.Orders.Count,
-            PointsRecordCount = user.PointsRecords.Count
+            PointsRecordCount = user.PointsRecords.Count,
+            LevelName = string.Empty,
+            DiscountRate = 1.0m
         };
+
+        var level = await _memberLevelService.GetLevelByTotalPointsAsync(user.TotalPoints);
+        if (level != null)
+        {
+            dto.LevelName = level.Name;
+            dto.DiscountRate = level.DiscountRate;
+        }
 
         return Ok(ApiResponse.Ok(dto));
     }
@@ -177,8 +198,17 @@ public class MemberUsersController : ControllerBase
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
             OrderCount = 0,
-            PointsRecordCount = user.PointsRecords.Count
+            PointsRecordCount = user.PointsRecords.Count,
+            LevelName = string.Empty,
+            DiscountRate = 1.0m
         };
+
+        var createLevel = await _memberLevelService.GetLevelByTotalPointsAsync(user.TotalPoints);
+        if (createLevel != null)
+        {
+            result.LevelName = createLevel.Name;
+            result.DiscountRate = createLevel.DiscountRate;
+        }
 
         return CreatedAtAction(nameof(GetMemberUser), new { id = user.Id }, ApiResponse.Ok(result));
     }

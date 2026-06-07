@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PointsMall.Data;
 using PointsMall.Dtos;
 using PointsMall.Models;
+using PointsMall.Services;
 
 namespace PointsMall.Controllers;
 
@@ -13,10 +14,12 @@ namespace PointsMall.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IMemberLevelService _memberLevelService;
 
-    public OrdersController(ApplicationDbContext context)
+    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService)
     {
         _context = context;
+        _memberLevelService = memberLevelService;
     }
 
     [HttpGet]
@@ -134,49 +137,122 @@ public class OrdersController : ControllerBase
             return BadRequest(ApiResponse.Error<OrderDto>("库存不足"));
         }
 
-        var order = new Order
+        MemberUser? memberUser = null;
+        decimal discountRate = 1.0m;
+        int basePoints = product.PointsRequired * dto.Quantity;
+        int pointsConsumed = basePoints;
+
+        if (dto.MemberUserId.HasValue)
         {
-            OrderNo = GenerateOrderNo(),
-            ProductId = dto.ProductId,
-            ProductName = product.Name,
-            PointsConsumed = product.PointsRequired * dto.Quantity,
-            Quantity = dto.Quantity,
-            RecipientName = dto.RecipientName,
-            RecipientPhone = dto.RecipientPhone,
-            RecipientAddress = dto.RecipientAddress,
-            Status = "Pending",
-            Remark = dto.Remark
-        };
+            memberUser = await _context.MemberUsers.FindAsync(dto.MemberUserId.Value);
+            if (memberUser == null)
+            {
+                return BadRequest(ApiResponse.Error<OrderDto>("会员用户不存在"));
+            }
 
-        product.Stock -= dto.Quantity;
-        product.UpdatedAt = DateTime.Now;
+            if (memberUser.Status != "Active")
+            {
+                return BadRequest(ApiResponse.Error<OrderDto>("会员账号已被禁用"));
+            }
 
-        order.OrderHistories.Add(new OrderHistory
+            discountRate = await _memberLevelService.GetDiscountRateAsync(memberUser.TotalPoints);
+            pointsConsumed = (int)Math.Ceiling(basePoints * discountRate);
+
+            if (memberUser.Points < pointsConsumed)
+            {
+                return BadRequest(ApiResponse.Error<OrderDto>("积分不足，无法兑换"));
+            }
+        }
+
+        var useTransaction = _context.Database.IsRelational();
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+
+        try
         {
-            Status = "Pending",
-            Remark = "订单创建成功"
-        });
+            if (useTransaction)
+            {
+                transaction = await _context.Database.BeginTransactionAsync();
+            }
 
-        _context.Orders.Add(order);
-        await _context.SaveChangesAsync();
+            var order = new Order
+            {
+                OrderNo = GenerateOrderNo(),
+                ProductId = dto.ProductId,
+                ProductName = product.Name,
+                PointsConsumed = pointsConsumed,
+                Quantity = dto.Quantity,
+                RecipientName = dto.RecipientName,
+                RecipientPhone = dto.RecipientPhone,
+                RecipientAddress = dto.RecipientAddress,
+                Status = "Pending",
+                Remark = dto.Remark,
+                MemberUserId = dto.MemberUserId
+            };
 
-        var result = new OrderDto
+            product.Stock -= dto.Quantity;
+            product.UpdatedAt = DateTime.Now;
+
+            order.OrderHistories.Add(new OrderHistory
+            {
+                Status = "Pending",
+                Remark = "订单创建成功"
+            });
+
+            _context.Orders.Add(order);
+
+            if (memberUser != null)
+            {
+                memberUser.Points -= pointsConsumed;
+                memberUser.UpdatedAt = DateTime.Now;
+
+                var pointsRecord = new PointsRecord
+                {
+                    MemberUserId = memberUser.Id,
+                    Type = "Expense",
+                    Points = pointsConsumed,
+                    Balance = memberUser.Points,
+                    Source = "Exchange",
+                    OrderNo = order.OrderNo,
+                    Remark = $"兑换商品: {product.Name}",
+                    CreatedAt = DateTime.Now
+                };
+
+                _context.PointsRecords.Add(pointsRecord);
+            }
+
+            await _context.SaveChangesAsync();
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+
+            var result = new OrderDto
+            {
+                Id = order.Id,
+                OrderNo = order.OrderNo,
+                ProductId = order.ProductId,
+                ProductName = order.ProductName,
+                PointsConsumed = order.PointsConsumed,
+                Quantity = order.Quantity,
+                RecipientName = order.RecipientName,
+                RecipientPhone = order.RecipientPhone,
+                RecipientAddress = order.RecipientAddress,
+                Status = order.Status,
+                CreatedAt = order.CreatedAt,
+                UpdatedAt = order.UpdatedAt
+            };
+
+            return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, ApiResponse.Ok(result, "订单创建成功"));
+        }
+        catch
         {
-            Id = order.Id,
-            OrderNo = order.OrderNo,
-            ProductId = order.ProductId,
-            ProductName = order.ProductName,
-            PointsConsumed = order.PointsConsumed,
-            Quantity = order.Quantity,
-            RecipientName = order.RecipientName,
-            RecipientPhone = order.RecipientPhone,
-            RecipientAddress = order.RecipientAddress,
-            Status = order.Status,
-            CreatedAt = order.CreatedAt,
-            UpdatedAt = order.UpdatedAt
-        };
-
-        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, ApiResponse.Ok(result, "订单创建成功"));
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+            throw;
+        }
     }
 
     [HttpPut("{id}/ship")]
@@ -254,25 +330,73 @@ public class OrdersController : ControllerBase
             return BadRequest(ApiResponse.Error("订单状态不允许退换货"));
         }
 
-        order.Status = "Returned";
-        order.UpdatedAt = DateTime.Now;
+        var useTransaction = _context.Database.IsRelational();
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
 
-        var product = await _context.Products.FindAsync(order.ProductId);
-        if (product != null)
+        try
         {
-            product.Stock += order.Quantity;
-            product.UpdatedAt = DateTime.Now;
+            if (useTransaction)
+            {
+                transaction = await _context.Database.BeginTransactionAsync();
+            }
+
+            order.Status = "Returned";
+            order.UpdatedAt = DateTime.Now;
+
+            var product = await _context.Products.FindAsync(order.ProductId);
+            if (product != null)
+            {
+                product.Stock += order.Quantity;
+                product.UpdatedAt = DateTime.Now;
+            }
+
+            order.OrderHistories.Add(new OrderHistory
+            {
+                Status = "Returned",
+                Remark = $"退换货原因: {dto.Reason}"
+            });
+
+            if (order.MemberUserId.HasValue)
+            {
+                var memberUser = await _context.MemberUsers.FindAsync(order.MemberUserId.Value);
+                if (memberUser != null)
+                {
+                    memberUser.Points += order.PointsConsumed;
+                    memberUser.UpdatedAt = DateTime.Now;
+
+                    var pointsRecord = new PointsRecord
+                    {
+                        MemberUserId = memberUser.Id,
+                        Type = "Income",
+                        Points = order.PointsConsumed,
+                        Balance = memberUser.Points,
+                        Source = "Refund",
+                        OrderNo = order.OrderNo,
+                        Remark = "退换货，积分退还",
+                        CreatedAt = DateTime.Now
+                    };
+
+                    _context.PointsRecords.Add(pointsRecord);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+
+            return Ok(ApiResponse.Ok("退换货处理成功"));
         }
-
-        order.OrderHistories.Add(new OrderHistory
+        catch
         {
-            Status = "Returned",
-            Remark = $"退换货原因: {dto.Reason}"
-        });
-
-        await _context.SaveChangesAsync();
-
-        return Ok(ApiResponse.Ok("退换货处理成功"));
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+            throw;
+        }
     }
 
     [HttpPut("{id}/cancel")]
@@ -290,25 +414,73 @@ public class OrdersController : ControllerBase
             return BadRequest(ApiResponse.Error("订单状态不允许取消"));
         }
 
-        order.Status = "Cancelled";
-        order.UpdatedAt = DateTime.Now;
+        var useTransaction = _context.Database.IsRelational();
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
 
-        var product = await _context.Products.FindAsync(order.ProductId);
-        if (product != null)
+        try
         {
-            product.Stock += order.Quantity;
-            product.UpdatedAt = DateTime.Now;
+            if (useTransaction)
+            {
+                transaction = await _context.Database.BeginTransactionAsync();
+            }
+
+            order.Status = "Cancelled";
+            order.UpdatedAt = DateTime.Now;
+
+            var product = await _context.Products.FindAsync(order.ProductId);
+            if (product != null)
+            {
+                product.Stock += order.Quantity;
+                product.UpdatedAt = DateTime.Now;
+            }
+
+            order.OrderHistories.Add(new OrderHistory
+            {
+                Status = "Cancelled",
+                Remark = "订单已取消"
+            });
+
+            if (order.MemberUserId.HasValue)
+            {
+                var memberUser = await _context.MemberUsers.FindAsync(order.MemberUserId.Value);
+                if (memberUser != null)
+                {
+                    memberUser.Points += order.PointsConsumed;
+                    memberUser.UpdatedAt = DateTime.Now;
+
+                    var pointsRecord = new PointsRecord
+                    {
+                        MemberUserId = memberUser.Id,
+                        Type = "Income",
+                        Points = order.PointsConsumed,
+                        Balance = memberUser.Points,
+                        Source = "Refund",
+                        OrderNo = order.OrderNo,
+                        Remark = "订单取消，积分退还",
+                        CreatedAt = DateTime.Now
+                    };
+
+                    _context.PointsRecords.Add(pointsRecord);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+
+            return Ok(ApiResponse.Ok("订单取消成功"));
         }
-
-        order.OrderHistories.Add(new OrderHistory
+        catch
         {
-            Status = "Cancelled",
-            Remark = "订单已取消"
-        });
-
-        await _context.SaveChangesAsync();
-
-        return Ok(ApiResponse.Ok("订单取消成功"));
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+            throw;
+        }
     }
 
     private string GenerateOrderNo()

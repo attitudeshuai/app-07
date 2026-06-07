@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<OrderHistory> OrderHistories { get; set; }
     public DbSet<MemberUser> MemberUsers { get; set; }
     public DbSet<PointsRecord> PointsRecords { get; set; }
+    public DbSet<MemberLevel> MemberLevels { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,5 +61,12 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<PointsRecord>()
             .HasIndex(r => r.Type);
+
+        modelBuilder.Entity<MemberLevel>()
+            .HasIndex(l => l.Name)
+            .IsUnique();
+
+        modelBuilder.Entity<MemberLevel>()
+            .HasIndex(l => l.MinPoints);
     }
 }

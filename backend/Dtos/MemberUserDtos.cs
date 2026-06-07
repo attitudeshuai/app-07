@@ -15,6 +15,8 @@ public class MemberUserDto
     public DateTime UpdatedAt { get; set; }
     public int OrderCount { get; set; }
     public int PointsRecordCount { get; set; }
+    public string LevelName { get; set; } = string.Empty;
+    public decimal DiscountRate { get; set; } = 1.0m;
 }
 
 public class CreateMemberUserDto

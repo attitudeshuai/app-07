@@ -36,6 +36,7 @@ public class CreateOrderDto
     public string RecipientPhone { get; set; } = string.Empty;
     public string RecipientAddress { get; set; } = string.Empty;
     public string? Remark { get; set; }
+    public int? MemberUserId { get; set; }
 }
 
 public class ShipOrderDto
