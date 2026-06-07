@@ -24,6 +24,7 @@ public class OrderDto
     public LogisticsTraceDto? LogisticsTrace { get; set; }
     public bool HasReview { get; set; }
     public int? AutoCompleteDaysLeft { get; set; }
+    public List<OrderPackageDto> Packages { get; set; } = new();
 }
 
 public class OrderHistoryDto
@@ -72,4 +73,55 @@ public class PagedResult<T>
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalPages => (int)Math.Ceiling((double)Total / PageSize);
+}
+
+public class OrderPackageDto
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public string PackageNo { get; set; } = string.Empty;
+    public string? TrackingNumber { get; set; }
+    public string? ShippingCompany { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Remark { get; set; }
+    public DateTime? ShippedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public List<OrderPackageItemDto> Items { get; set; } = new();
+    public LogisticsTraceDto? LogisticsTrace { get; set; }
+}
+
+public class OrderPackageItemDto
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+}
+
+public class CreateOrderPackageDto
+{
+    public int OrderId { get; set; }
+    public string? Remark { get; set; }
+    public List<CreateOrderPackageItemDto> Items { get; set; } = new();
+}
+
+public class CreateOrderPackageItemDto
+{
+    public int ProductId { get; set; }
+    public int Quantity { get; set; }
+}
+
+public class UpdateOrderPackageDto
+{
+    public string? TrackingNumber { get; set; }
+    public string? ShippingCompany { get; set; }
+    public string? Remark { get; set; }
+}
+
+public class ShipPackageDto
+{
+    public string TrackingNumber { get; set; } = string.Empty;
+    public string ShippingCompany { get; set; } = string.Empty;
+    public string? Remark { get; set; }
 }

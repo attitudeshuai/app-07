@@ -28,6 +28,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<LogisticsTraceItem> LogisticsTraceItems { get; set; }
     public DbSet<ProductReview> ProductReviews { get; set; }
     public DbSet<PointsExpiryNotice> PointsExpiryNotices { get; set; }
+    public DbSet<OrderPackage> OrderPackages { get; set; }
+    public DbSet<OrderPackageItem> OrderPackageItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -267,6 +269,34 @@ public class ApplicationDbContext : DbContext
             .WithOne()
             .HasForeignKey<ProductReview>(r => r.OrderId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<OrderPackage>()
+            .HasIndex(p => p.PackageNo)
+            .IsUnique();
+
+        modelBuilder.Entity<OrderPackage>()
+            .HasIndex(p => p.OrderId);
+
+        modelBuilder.Entity<OrderPackage>()
+            .HasIndex(p => p.Status);
+
+        modelBuilder.Entity<OrderPackage>()
+            .HasOne(p => p.Order)
+            .WithMany(o => o.Packages)
+            .HasForeignKey(p => p.OrderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrderPackage>()
+            .HasMany(p => p.Items)
+            .WithOne(i => i.OrderPackage)
+            .HasForeignKey(i => i.OrderPackageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OrderPackageItem>()
+            .HasIndex(i => i.OrderPackageId);
+
+        modelBuilder.Entity<OrderPackageItem>()
+            .HasIndex(i => i.ProductId);
     }
 
     public static bool IsUniqueConstraintViolation(Exception? ex)

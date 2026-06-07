@@ -22,6 +22,7 @@ public class Order
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
     public List<OrderHistory> OrderHistories { get; set; } = new();
+    public List<OrderPackage> Packages { get; set; } = new();
     public MemberUser? MemberUser { get; set; }
 }
 

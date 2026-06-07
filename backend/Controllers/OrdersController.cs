@@ -122,6 +122,8 @@ public class OrdersController : ControllerBase
     {
         var order = await _context.Orders
             .Include(o => o.OrderHistories)
+            .Include(o => o.Packages)
+                .ThenInclude(p => p.Items)
             .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null)
@@ -166,7 +168,7 @@ public class OrdersController : ControllerBase
             HasReview = await _context.ProductReviews.AnyAsync(r => r.OrderId == order.Id)
         };
 
-        if (order.Status == "Shipped" && order.ShippedAt.HasValue)
+        if ((order.Status == "Shipped" || order.Status == "PartiallyShipped") && order.ShippedAt.HasValue)
         {
             var daysSinceShipped = (int)(DateTime.Now - order.ShippedAt.Value).TotalDays;
             dto.AutoCompleteDaysLeft = Math.Max(0, autoCompleteDays - daysSinceShipped);
@@ -175,6 +177,40 @@ public class OrdersController : ControllerBase
         if (order.Status == "Shipped" && !string.IsNullOrEmpty(order.TrackingNumber) && !string.IsNullOrEmpty(order.ShippingCompany))
         {
             dto.LogisticsTrace = await _logisticsService.GetLogisticsTraceAsync(order.TrackingNumber, order.ShippingCompany);
+        }
+
+        foreach (var package in order.Packages.OrderBy(p => p.CreatedAt))
+        {
+            var packageDto = new OrderPackageDto
+            {
+                Id = package.Id,
+                OrderId = package.OrderId,
+                PackageNo = package.PackageNo,
+                TrackingNumber = package.TrackingNumber,
+                ShippingCompany = package.ShippingCompany,
+                Status = package.Status,
+                Remark = package.Remark,
+                ShippedAt = package.ShippedAt,
+                CreatedAt = package.CreatedAt,
+                UpdatedAt = package.UpdatedAt,
+                Items = package.Items.Select(i => new OrderPackageItemDto
+                {
+                    Id = i.Id,
+                    ProductId = i.ProductId,
+                    ProductName = i.ProductName,
+                    Quantity = i.Quantity
+                }).ToList()
+            };
+
+            if (package.Status == "Shipped" &&
+                !string.IsNullOrEmpty(package.TrackingNumber) &&
+                !string.IsNullOrEmpty(package.ShippingCompany))
+            {
+                packageDto.LogisticsTrace = await _logisticsService.GetLogisticsTraceAsync(
+                    package.TrackingNumber, package.ShippingCompany);
+            }
+
+            dto.Packages.Add(packageDto);
         }
 
         return Ok(ApiResponse.Ok(dto));
@@ -357,7 +393,9 @@ public class OrdersController : ControllerBase
     [HttpPut("{id}/ship")]
     public async Task<ActionResult<ApiResponse<object>>> ShipOrder(int id, [FromBody] ShipOrderDto dto)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var order = await _context.Orders
+            .Include(o => o.Packages)
+            .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null)
         {
@@ -373,6 +411,32 @@ public class OrdersController : ControllerBase
         {
             return BadRequest(ApiResponse.Error("订单状态不允许发货"));
         }
+
+        var existingPackages = order.Packages.Where(p => p.Status == "Shipped").ToList();
+        if (existingPackages.Count > 0)
+        {
+            return BadRequest(ApiResponse.Error("订单已存在已发货包裹，请使用分批发货接口"));
+        }
+
+        var package = new OrderPackage
+        {
+            OrderId = id,
+            PackageNo = GeneratePackageNo(),
+            TrackingNumber = dto.TrackingNumber,
+            ShippingCompany = dto.ShippingCompany,
+            Status = "Shipped",
+            Remark = dto.Remark ?? "订单已发货",
+            ShippedAt = DateTime.Now,
+        };
+
+        package.Items.Add(new OrderPackageItem
+        {
+            ProductId = order.ProductId,
+            ProductName = order.ProductName,
+            Quantity = order.Quantity
+        });
+
+        _context.OrderPackages.Add(package);
 
         order.Status = "Shipped";
         order.TrackingNumber = dto.TrackingNumber;
@@ -394,7 +458,9 @@ public class OrdersController : ControllerBase
     [HttpPut("{id}/complete")]
     public async Task<ActionResult<ApiResponse<object>>> CompleteOrder(int id)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var order = await _context.Orders
+            .Include(o => o.Packages)
+            .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null)
         {
@@ -408,6 +474,10 @@ public class OrdersController : ControllerBase
 
         if (order.Status != "Shipped")
         {
+            if (order.Status == "PartiallyShipped")
+            {
+                return BadRequest(ApiResponse.Error("订单部分发货中，请等待所有包裹发货后再确认收货"));
+            }
             return BadRequest(ApiResponse.Error("订单状态不允许完成"));
         }
 
@@ -617,6 +687,11 @@ public class OrdersController : ControllerBase
     private string GenerateOrderNo()
     {
         return $"ORD{DateTime.Now:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
+    }
+
+    private string GeneratePackageNo()
+    {
+        return $"PKG{DateTime.Now:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
     }
 
     private bool IsCurrentUserAdmin()
