@@ -82,6 +82,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddScoped<IMemberLevelService, MemberLevelService>();
 builder.Services.AddScoped<IFlashSaleService, FlashSaleService>();
+builder.Services.AddScoped<ICheckInService, CheckInService>();
 
 var app = builder.Build();
 

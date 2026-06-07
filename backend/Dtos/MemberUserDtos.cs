@@ -10,11 +10,15 @@ public class MemberUserDto
     public string Avatar { get; set; } = string.Empty;
     public int Points { get; set; }
     public int TotalPoints { get; set; }
+    public int ContinuousCheckInDays { get; set; }
+    public int TotalCheckInDays { get; set; }
+    public DateTime? LastCheckInDate { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public int OrderCount { get; set; }
     public int PointsRecordCount { get; set; }
+    public int CheckInRecordCount { get; set; }
     public string LevelName { get; set; } = string.Empty;
     public decimal DiscountRate { get; set; } = 1.0m;
 }

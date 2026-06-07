@@ -63,6 +63,12 @@ public class MemberUsersController : ControllerBase
             .Select(g => new { MemberUserId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.MemberUserId, x => x.Count);
 
+        var checkInRecordCounts = await _context.CheckInRecords
+            .Where(c => userIds.Contains(c.MemberUserId))
+            .GroupBy(c => c.MemberUserId)
+            .Select(g => new { MemberUserId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.MemberUserId, x => x.Count);
+
         var levels = await _memberLevelService.GetActiveLevelsAsync();
         var levelsSorted = levels.OrderByDescending(l => l.MinPoints).ToList();
 
@@ -79,11 +85,15 @@ public class MemberUsersController : ControllerBase
                 Avatar = u.Avatar,
                 Points = u.Points,
                 TotalPoints = u.TotalPoints,
+                ContinuousCheckInDays = u.ContinuousCheckInDays,
+                TotalCheckInDays = u.TotalCheckInDays,
+                LastCheckInDate = u.LastCheckInDate,
                 Status = u.Status,
                 CreatedAt = u.CreatedAt,
                 UpdatedAt = u.UpdatedAt,
                 OrderCount = orderCounts.TryGetValue(u.Id, out var oc) ? oc : 0,
                 PointsRecordCount = pointsRecordCounts.TryGetValue(u.Id, out var prc) ? prc : 0,
+                CheckInRecordCount = checkInRecordCounts.TryGetValue(u.Id, out var cic) ? cic : 0,
                 LevelName = level?.Name ?? string.Empty,
                 DiscountRate = level?.DiscountRate ?? 1.0m
             };
@@ -106,6 +116,7 @@ public class MemberUsersController : ControllerBase
         var user = await _context.MemberUsers
             .Include(u => u.Orders)
             .Include(u => u.PointsRecords)
+            .Include(u => u.CheckInRecords)
             .FirstOrDefaultAsync(u => u.Id == id);
 
         if (user == null)
@@ -123,11 +134,15 @@ public class MemberUsersController : ControllerBase
             Avatar = user.Avatar,
             Points = user.Points,
             TotalPoints = user.TotalPoints,
+            ContinuousCheckInDays = user.ContinuousCheckInDays,
+            TotalCheckInDays = user.TotalCheckInDays,
+            LastCheckInDate = user.LastCheckInDate,
             Status = user.Status,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
             OrderCount = user.Orders.Count,
             PointsRecordCount = user.PointsRecords.Count,
+            CheckInRecordCount = user.CheckInRecords.Count,
             LevelName = string.Empty,
             DiscountRate = 1.0m
         };
@@ -194,11 +209,15 @@ public class MemberUsersController : ControllerBase
             Avatar = user.Avatar,
             Points = user.Points,
             TotalPoints = user.TotalPoints,
+            ContinuousCheckInDays = user.ContinuousCheckInDays,
+            TotalCheckInDays = user.TotalCheckInDays,
+            LastCheckInDate = user.LastCheckInDate,
             Status = user.Status,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
             OrderCount = 0,
             PointsRecordCount = user.PointsRecords.Count,
+            CheckInRecordCount = 0,
             LevelName = string.Empty,
             DiscountRate = 1.0m
         };
@@ -267,6 +286,7 @@ public class MemberUsersController : ControllerBase
         var user = await _context.MemberUsers
             .Include(u => u.Orders)
             .Include(u => u.PointsRecords)
+            .Include(u => u.CheckInRecords)
             .FirstOrDefaultAsync(u => u.Id == id);
         if (user == null)
         {
@@ -279,6 +299,7 @@ public class MemberUsersController : ControllerBase
         }
 
         _context.PointsRecords.RemoveRange(user.PointsRecords);
+        _context.CheckInRecords.RemoveRange(user.CheckInRecords);
         _context.MemberUsers.Remove(user);
         await _context.SaveChangesAsync();
 

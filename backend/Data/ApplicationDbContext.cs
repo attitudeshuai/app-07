@@ -20,6 +20,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Category> Categories { get; set; }
     public DbSet<FlashSale> FlashSales { get; set; }
     public DbSet<FlashSaleUserPurchase> FlashSaleUserPurchases { get; set; }
+    public DbSet<CheckInRecord> CheckInRecords { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -123,5 +124,21 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<FlashSaleUserPurchase>()
             .HasIndex(p => p.MemberUserId);
+
+        modelBuilder.Entity<CheckInRecord>()
+            .HasIndex(r => r.MemberUserId);
+
+        modelBuilder.Entity<CheckInRecord>()
+            .HasIndex(r => r.CheckInDate);
+
+        modelBuilder.Entity<CheckInRecord>()
+            .HasIndex(r => new { r.MemberUserId, r.CheckInDate })
+            .IsUnique();
+
+        modelBuilder.Entity<MemberUser>()
+            .HasMany(u => u.CheckInRecords)
+            .WithOne(r => r.MemberUser)
+            .HasForeignKey(r => r.MemberUserId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
