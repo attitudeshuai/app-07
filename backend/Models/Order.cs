@@ -18,6 +18,7 @@ public class Order
     public string? TrackingNumber { get; set; }
     public string? ShippingCompany { get; set; }
     public string? Remark { get; set; }
+    public DateTime? ShippedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
     public List<OrderHistory> OrderHistories { get; set; } = new();

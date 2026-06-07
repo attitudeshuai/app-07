@@ -17,11 +17,13 @@ public class OrderDto
     public string? TrackingNumber { get; set; }
     public string? ShippingCompany { get; set; }
     public string? Remark { get; set; }
+    public DateTime? ShippedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public List<OrderHistoryDto> OrderHistories { get; set; } = new();
     public LogisticsTraceDto? LogisticsTrace { get; set; }
     public bool HasReview { get; set; }
+    public int? AutoCompleteDaysLeft { get; set; }
 }
 
 public class OrderHistoryDto

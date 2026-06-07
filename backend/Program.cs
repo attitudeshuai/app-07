@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using PointsMall.BackgroundServices;
 using PointsMall.Data;
 using PointsMall.Services;
 
@@ -104,6 +105,9 @@ builder.Services.AddScoped<IMemberLevelService, MemberLevelService>();
 builder.Services.AddScoped<IFlashSaleService, FlashSaleService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
 builder.Services.AddScoped<ILogisticsService, LogisticsService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
+
+builder.Services.AddHostedService<OrderAutoCompleteService>();
 
 var app = builder.Build();
 

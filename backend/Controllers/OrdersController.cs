@@ -18,13 +18,15 @@ public class OrdersController : ControllerBase
     private readonly IMemberLevelService _memberLevelService;
     private readonly IFlashSaleService _flashSaleService;
     private readonly ILogisticsService _logisticsService;
+    private readonly IConfiguration _configuration;
 
-    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService, ILogisticsService logisticsService)
+    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService, ILogisticsService logisticsService, IConfiguration configuration)
     {
         _context = context;
         _memberLevelService = memberLevelService;
         _flashSaleService = flashSaleService;
         _logisticsService = logisticsService;
+        _configuration = configuration;
     }
 
     [HttpGet]
@@ -61,6 +63,9 @@ public class OrdersController : ControllerBase
                                      o.RecipientPhone.Contains(search));
         }
 
+        var autoCompleteDays = _configuration.GetValue<int>("OrderAutoComplete:Days", 7);
+        var now = DateTime.Now;
+
         var total = await query.CountAsync();
         var orders = await query
             .OrderByDescending(o => o.CreatedAt)
@@ -83,11 +88,21 @@ public class OrdersController : ControllerBase
                 TrackingNumber = o.TrackingNumber,
                 ShippingCompany = o.ShippingCompany,
                 Remark = o.Remark,
+                ShippedAt = o.ShippedAt,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
                 HasReview = _context.ProductReviews.Any(r => r.OrderId == o.Id)
             })
             .ToListAsync();
+
+        foreach (var order in orders)
+        {
+            if (order.Status == "Shipped" && order.ShippedAt.HasValue)
+            {
+                var daysSinceShipped = (int)(now - order.ShippedAt.Value).TotalDays;
+                order.AutoCompleteDaysLeft = Math.Max(0, autoCompleteDays - daysSinceShipped);
+            }
+        }
 
         var result = new PagedResult<OrderDto>
         {
@@ -117,6 +132,8 @@ public class OrdersController : ControllerBase
             return Unauthorized(ApiResponse.Error<OrderDto>("无权查看该订单"));
         }
 
+        var autoCompleteDays = _configuration.GetValue<int>("OrderAutoComplete:Days", 7);
+
         var dto = new OrderDto
         {
             Id = order.Id,
@@ -134,6 +151,7 @@ public class OrdersController : ControllerBase
             TrackingNumber = order.TrackingNumber,
             ShippingCompany = order.ShippingCompany,
             Remark = order.Remark,
+            ShippedAt = order.ShippedAt,
             CreatedAt = order.CreatedAt,
             UpdatedAt = order.UpdatedAt,
             OrderHistories = order.OrderHistories.Select(h => new OrderHistoryDto
@@ -145,6 +163,12 @@ public class OrdersController : ControllerBase
             }).ToList(),
             HasReview = await _context.ProductReviews.AnyAsync(r => r.OrderId == order.Id)
         };
+
+        if (order.Status == "Shipped" && order.ShippedAt.HasValue)
+        {
+            var daysSinceShipped = (int)(DateTime.Now - order.ShippedAt.Value).TotalDays;
+            dto.AutoCompleteDaysLeft = Math.Max(0, autoCompleteDays - daysSinceShipped);
+        }
 
         if (order.Status == "Shipped" && !string.IsNullOrEmpty(order.TrackingNumber) && !string.IsNullOrEmpty(order.ShippingCompany))
         {
@@ -357,6 +381,7 @@ public class OrdersController : ControllerBase
         order.Status = "Shipped";
         order.TrackingNumber = dto.TrackingNumber;
         order.ShippingCompany = dto.ShippingCompany;
+        order.ShippedAt = DateTime.Now;
         order.UpdatedAt = DateTime.Now;
 
         order.OrderHistories.Add(new OrderHistory
@@ -390,18 +415,21 @@ public class OrdersController : ControllerBase
             return BadRequest(ApiResponse.Error("订单状态不允许完成"));
         }
 
+        var isAdmin = IsCurrentUserAdmin();
+        var remark = isAdmin ? "管理员确认收货" : "会员手动确认收货";
+
         order.Status = "Completed";
         order.UpdatedAt = DateTime.Now;
 
         order.OrderHistories.Add(new OrderHistory
         {
             Status = "Completed",
-            Remark = "订单已完成"
+            Remark = remark
         });
 
         await _context.SaveChangesAsync();
 
-        return Ok(ApiResponse.Ok("订单已完成"));
+        return Ok(ApiResponse.Ok("确认收货成功"));
     }
 
     [HttpPut("{id}/return")]
