@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PointsMall.Data;
 using PointsMall.Dtos;
 using PointsMall.Models;
+using System.Data;
 
 namespace PointsMall.Services;
 
@@ -16,57 +18,76 @@ public class CheckInService : ICheckInService
 
     public async Task<CheckInResultDto> CheckInAsync(int memberUserId)
     {
-        var user = await _context.MemberUsers.FindAsync(memberUserId);
-        if (user == null)
-        {
-            return new CheckInResultDto
-            {
-                Success = false,
-                Message = "会员用户不存在"
-            };
-        }
-
-        if (user.Status != "Active")
-        {
-            return new CheckInResultDto
-            {
-                Success = false,
-                Message = "会员状态异常，无法签到"
-            };
-        }
-
         var today = DateTime.Today;
 
-        if (!user.LastLoginDate.HasValue || user.LastLoginDate.Value.Date < today)
-        {
-            return new CheckInResultDto
-            {
-                Success = false,
-                Message = "请先登录后再进行签到"
-            };
-        }
-
-        if (user.LastCheckInDate.HasValue && user.LastCheckInDate.Value.Date == today)
-        {
-            return new CheckInResultDto
-            {
-                Success = false,
-                Message = "今日已签到，请明天再来"
-            };
-        }
-
-        int continuousDays = CalculateContinuousDays(user.LastCheckInDate, user.ContinuousCheckInDays);
-        int pointsEarned = GetPointsForContinuousDay(continuousDays);
-
         var useTransaction = _context.Database.IsRelational();
-        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        IDbContextTransaction? transaction = null;
 
         try
         {
             if (useTransaction)
             {
-                transaction = await _context.Database.BeginTransactionAsync();
+                transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
             }
+
+            var user = await LockMemberUserAsync(memberUserId);
+            if (user == null)
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
+                return new CheckInResultDto
+                {
+                    Success = false,
+                    Message = "会员用户不存在"
+                };
+            }
+
+            if (user.Status != "Active")
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
+                return new CheckInResultDto
+                {
+                    Success = false,
+                    Message = "会员状态异常，无法签到"
+                };
+            }
+
+            if (!user.LastLoginDate.HasValue || user.LastLoginDate.Value.Date < today)
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
+                return new CheckInResultDto
+                {
+                    Success = false,
+                    Message = "请先登录后再进行签到"
+                };
+            }
+
+            var hasCheckedInToday = await _context.CheckInRecords
+                .AnyAsync(r => r.MemberUserId == memberUserId && r.CheckInDate == today);
+
+            if (hasCheckedInToday)
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
+                return new CheckInResultDto
+                {
+                    Success = false,
+                    Message = "今日已签到，请明天再来"
+                };
+            }
+
+            int continuousDays = CalculateContinuousDays(user.LastCheckInDate, user.ContinuousCheckInDays);
+            int pointsEarned = GetPointsForContinuousDay(continuousDays);
 
             user.Points += pointsEarned;
             user.TotalPoints += pointsEarned;
@@ -139,6 +160,20 @@ public class CheckInService : ICheckInService
             }
             throw;
         }
+    }
+
+    private async Task<MemberUser?> LockMemberUserAsync(int memberUserId)
+    {
+        if (_context.Database.IsMySql())
+        {
+            var users = await _context.MemberUsers
+                .FromSqlInterpolated($"SELECT * FROM MemberUsers WHERE Id = {memberUserId} FOR UPDATE")
+                .ToListAsync();
+            return users.FirstOrDefault();
+        }
+
+        var user = await _context.MemberUsers.FindAsync(memberUserId);
+        return user;
     }
 
     public async Task<CheckInStatusDto> GetCheckInStatusAsync(int memberUserId)
