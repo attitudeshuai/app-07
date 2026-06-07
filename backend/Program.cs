@@ -45,7 +45,26 @@ if (useInMemoryDb)
 else
 {
     builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+    {
+        var serverVersionStr = builder.Configuration["MySqlServerVersion"];
+        ServerVersion? serverVersion = null;
+        if (!string.IsNullOrEmpty(serverVersionStr))
+        {
+            serverVersion = ServerVersion.Parse(serverVersionStr);
+        }
+        else
+        {
+            try
+            {
+                serverVersion = ServerVersion.AutoDetect(connectionString);
+            }
+            catch
+            {
+                serverVersion = ServerVersion.Parse("8.0.33-mysql");
+            }
+        }
+        options.UseMySql(connectionString, serverVersion);
+    });
 }
 
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key is not configured");

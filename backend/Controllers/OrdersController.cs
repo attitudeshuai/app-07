@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,18 @@ public class OrdersController : ControllerBase
         [FromQuery] int pageSize = 20)
     {
         var query = _context.Orders.AsQueryable();
+
+        var memberUserId = GetCurrentMemberUserId();
+        var isAdmin = IsCurrentUserAdmin();
+
+        if (!isAdmin && memberUserId.HasValue)
+        {
+            query = query.Where(o => o.MemberUserId == memberUserId.Value);
+        }
+        else if (!isAdmin)
+        {
+            return Unauthorized(ApiResponse.Error<PagedResult<OrderDto>>("身份验证失败"));
+        }
 
         if (!string.IsNullOrEmpty(status))
         {
@@ -98,6 +111,11 @@ public class OrdersController : ControllerBase
             return NotFound(ApiResponse.Error<OrderDto>("订单不存在"));
         }
 
+        if (!CanAccessOrder(order))
+        {
+            return Unauthorized(ApiResponse.Error<OrderDto>("无权查看该订单"));
+        }
+
         var dto = new OrderDto
         {
             Id = order.Id,
@@ -142,6 +160,11 @@ public class OrdersController : ControllerBase
         if (order == null)
         {
             return NotFound(ApiResponse.Error<LogisticsTraceDto>("订单不存在"));
+        }
+
+        if (!CanAccessOrder(order))
+        {
+            return Unauthorized(ApiResponse.Error<LogisticsTraceDto>("无权查看该订单的物流信息"));
         }
 
         if (order.Status != "Shipped")
@@ -569,5 +592,41 @@ public class OrdersController : ControllerBase
     private string GenerateOrderNo()
     {
         return $"ORD{DateTime.Now:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
+    }
+
+    private bool IsCurrentUserAdmin()
+    {
+        var roleClaim = User.FindFirst(ClaimTypes.Role);
+        return roleClaim != null && roleClaim.Value == "Admin";
+    }
+
+    private int? GetCurrentMemberUserId()
+    {
+        var nameIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        if (nameIdClaim != null && int.TryParse(nameIdClaim.Value, out var userId))
+        {
+            var roleClaim = User.FindFirst(ClaimTypes.Role);
+            if (roleClaim != null && roleClaim.Value == "Member")
+            {
+                return userId;
+            }
+        }
+        return null;
+    }
+
+    private bool CanAccessOrder(Order order)
+    {
+        if (IsCurrentUserAdmin())
+        {
+            return true;
+        }
+
+        var memberUserId = GetCurrentMemberUserId();
+        if (memberUserId.HasValue && order.MemberUserId.HasValue && memberUserId.Value == order.MemberUserId.Value)
+        {
+            return true;
+        }
+
+        return false;
     }
 }

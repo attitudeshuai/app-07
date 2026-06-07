@@ -10,7 +10,6 @@ public class LogisticsService : ILogisticsService
 {
     private readonly ApplicationDbContext _context;
     private readonly IMemoryCache _cache;
-    private readonly IConfiguration _configuration;
 
     private const string CacheKeyPrefix = "LogisticsTrace_";
     private const int CacheDurationMinutes = 30;
@@ -39,11 +38,10 @@ public class LogisticsService : ILogisticsService
         { "德邦", "DBL" }
     };
 
-    public LogisticsService(ApplicationDbContext context, IMemoryCache cache, IConfiguration configuration)
+    public LogisticsService(ApplicationDbContext context, IMemoryCache cache)
     {
         _context = context;
         _cache = cache;
-        _configuration = configuration;
     }
 
     public List<string> GetSupportedCompanies()
@@ -108,10 +106,10 @@ public class LogisticsService : ILogisticsService
 
         await Task.Delay(100);
 
-        return GenerateMockTrace(trackingNumber, shippingCompany, companyCode);
+        return GenerateMockTrace(trackingNumber, shippingCompany);
     }
 
-    private LogisticsTraceDto GenerateMockTrace(string trackingNumber, string shippingCompany, string companyCode)
+    private LogisticsTraceDto GenerateMockTrace(string trackingNumber, string shippingCompany)
     {
         var now = DateTime.Now;
         var traceItems = new List<LogisticsTraceItemDto>();
@@ -135,16 +133,11 @@ public class LogisticsService : ILogisticsService
 
         if (statusIndex >= 1)
         {
-            var transitCities = new List<string>();
-            var transitCount = random.Next(1, 3);
-            for (int i = 0; i < transitCount; i++)
-            {
-                var city = cities[random.Next(cities.Length)];
-                if (city != startCity && city != endCity && !transitCities.Contains(city))
-                {
-                    transitCities.Add(city);
-                }
-            }
+            var transitCities = cities
+                .Where(c => c != startCity && c != endCity)
+                .OrderBy(_ => random.Next())
+                .Take(random.Next(1, 3))
+                .ToList();
 
             var daysAgo = 2;
             foreach (var city in transitCities)
