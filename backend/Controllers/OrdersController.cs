@@ -341,6 +341,11 @@ public class OrdersController : ControllerBase
             return NotFound(ApiResponse.Error("订单不存在"));
         }
 
+        if (!IsCurrentUserAdmin())
+        {
+            return Unauthorized(ApiResponse.Error("无权执行发货操作"));
+        }
+
         if (order.Status != "Pending")
         {
             return BadRequest(ApiResponse.Error("订单状态不允许发货"));
@@ -372,6 +377,11 @@ public class OrdersController : ControllerBase
             return NotFound(ApiResponse.Error("订单不存在"));
         }
 
+        if (!CanAccessOrder(order))
+        {
+            return Unauthorized(ApiResponse.Error("无权操作该订单"));
+        }
+
         if (order.Status != "Shipped")
         {
             return BadRequest(ApiResponse.Error("订单状态不允许完成"));
@@ -399,6 +409,11 @@ public class OrdersController : ControllerBase
         if (order == null)
         {
             return NotFound(ApiResponse.Error("订单不存在"));
+        }
+
+        if (!CanAccessOrder(order))
+        {
+            return Unauthorized(ApiResponse.Error("无权操作该订单"));
         }
 
         if (order.Status != "Shipped" && order.Status != "Completed")
@@ -498,6 +513,11 @@ public class OrdersController : ControllerBase
         if (order == null)
         {
             return NotFound(ApiResponse.Error("订单不存在"));
+        }
+
+        if (!CanAccessOrder(order))
+        {
+            return Unauthorized(ApiResponse.Error("无权操作该订单"));
         }
 
         if (order.Status != "Pending")

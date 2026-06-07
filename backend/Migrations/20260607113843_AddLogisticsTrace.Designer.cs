@@ -11,7 +11,7 @@ using PointsMall.Data;
 namespace PointsMall.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260607110648_AddLogisticsTrace")]
+    [Migration("20260607113843_AddLogisticsTrace")]
     partial class AddLogisticsTrace
     {
         /// <inheritdoc />
