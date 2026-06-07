@@ -353,24 +353,14 @@ public class OrdersController : ControllerBase
 
             if (order.OrderType == "FlashSale" && order.FlashSaleId.HasValue)
             {
-                var flashSale = await _context.FlashSales.FindAsync(order.FlashSaleId.Value);
-                if (flashSale != null)
-                {
-                    flashSale.Stock += order.Quantity;
-                    flashSale.SoldCount = Math.Max(0, flashSale.SoldCount - order.Quantity);
-                    flashSale.UpdatedAt = DateTime.Now;
-                }
+                await _flashSaleService.ReturnStockAsync(order.FlashSaleId.Value, order.Quantity);
 
                 if (order.MemberUserId.HasValue)
                 {
-                    var purchase = await _context.FlashSaleUserPurchases
-                        .FirstOrDefaultAsync(p => p.FlashSaleId == order.FlashSaleId.Value &&
-                                                  p.MemberUserId == order.MemberUserId.Value);
-                    if (purchase != null)
-                    {
-                        purchase.Quantity = Math.Max(0, purchase.Quantity - order.Quantity);
-                        purchase.UpdatedAt = DateTime.Now;
-                    }
+                    await _flashSaleService.ReturnUserPurchaseAsync(
+                        order.FlashSaleId.Value,
+                        order.MemberUserId.Value,
+                        order.Quantity);
                 }
             }
             else
@@ -462,24 +452,14 @@ public class OrdersController : ControllerBase
 
             if (order.OrderType == "FlashSale" && order.FlashSaleId.HasValue)
             {
-                var flashSale = await _context.FlashSales.FindAsync(order.FlashSaleId.Value);
-                if (flashSale != null)
-                {
-                    flashSale.Stock += order.Quantity;
-                    flashSale.SoldCount = Math.Max(0, flashSale.SoldCount - order.Quantity);
-                    flashSale.UpdatedAt = DateTime.Now;
-                }
+                await _flashSaleService.ReturnStockAsync(order.FlashSaleId.Value, order.Quantity);
 
                 if (order.MemberUserId.HasValue)
                 {
-                    var purchase = await _context.FlashSaleUserPurchases
-                        .FirstOrDefaultAsync(p => p.FlashSaleId == order.FlashSaleId.Value &&
-                                                  p.MemberUserId == order.MemberUserId.Value);
-                    if (purchase != null)
-                    {
-                        purchase.Quantity = Math.Max(0, purchase.Quantity - order.Quantity);
-                        purchase.UpdatedAt = DateTime.Now;
-                    }
+                    await _flashSaleService.ReturnUserPurchaseAsync(
+                        order.FlashSaleId.Value,
+                        order.MemberUserId.Value,
+                        order.Quantity);
                 }
             }
             else

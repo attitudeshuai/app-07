@@ -318,55 +318,62 @@ public class FlashSaleService : IFlashSaleService
                 return ApiResponse.Error<OrderDto>("积分不足，无法兑换");
             }
 
+            int remainingPoints;
             if (useTransaction)
             {
+                var latestMember = await _context.MemberUsers
+                    .AsNoTracking()
+                    .Where(u => u.Id == dto.MemberUserId.Value)
+                    .FirstOrDefaultAsync();
+                remainingPoints = latestMember?.Points ?? (memberUser.Points - pointsConsumed);
+
                 await _context.Database.ExecuteSqlRawAsync(
                     @"INSERT IGNORE INTO FlashSaleUserPurchases 
                       (FlashSaleId, MemberUserId, Quantity, CreatedAt, UpdatedAt) 
                       VALUES ({0}, {1}, 0, NOW(), NOW())",
                     flashSale.Id, dto.MemberUserId.Value);
+
+                var purchaseRows = await _context.FlashSaleUserPurchases
+                    .Where(p => p.FlashSaleId == flashSale.Id &&
+                                p.MemberUserId == dto.MemberUserId.Value &&
+                                p.Quantity + dto.Quantity <= flashSale.LimitPerUser)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(p => p.Quantity, p => p.Quantity + dto.Quantity)
+                        .SetProperty(p => p.UpdatedAt, p => DateTime.Now));
+
+                if (purchaseRows == 0)
+                {
+                    if (transaction != null) await transaction.RollbackAsync();
+                    return ApiResponse.Error<OrderDto>($"每人限购 {flashSale.LimitPerUser} 件，您已达购买上限");
+                }
             }
             else
             {
-                var exists = await _context.FlashSaleUserPurchases
-                    .AnyAsync(p => p.FlashSaleId == flashSale.Id && p.MemberUserId == dto.MemberUserId.Value);
-                if (!exists)
+                remainingPoints = memberUser.Points - pointsConsumed;
+
+                var purchase = await _context.FlashSaleUserPurchases
+                    .FirstOrDefaultAsync(p => p.FlashSaleId == flashSale.Id &&
+                                              p.MemberUserId == dto.MemberUserId.Value);
+
+                if (purchase == null)
                 {
-                    _context.FlashSaleUserPurchases.Add(new FlashSaleUserPurchase
+                    purchase = new FlashSaleUserPurchase
                     {
                         FlashSaleId = flashSale.Id,
                         MemberUserId = dto.MemberUserId.Value,
                         Quantity = 0
-                    });
-                    await _context.SaveChangesAsync();
+                    };
+                    _context.FlashSaleUserPurchases.Add(purchase);
                 }
-            }
 
-            var purchaseRows = await _context.FlashSaleUserPurchases
-                .Where(p => p.FlashSaleId == flashSale.Id &&
-                            p.MemberUserId == dto.MemberUserId.Value &&
-                            p.Quantity + dto.Quantity <= flashSale.LimitPerUser)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(p => p.Quantity, p => p.Quantity + dto.Quantity)
-                    .SetProperty(p => p.UpdatedAt, p => DateTime.Now));
-
-            if (purchaseRows == 0)
-            {
-                if (transaction != null) await transaction.RollbackAsync();
-                return ApiResponse.Error<OrderDto>($"每人限购 {flashSale.LimitPerUser} 件，您已达购买上限");
-            }
-
-            int remainingPoints = memberUser.Points - pointsConsumed;
-            if (useTransaction)
-            {
-                var latestPoints = await _context.MemberUsers
-                    .FromSqlRaw("SELECT * FROM MemberUsers WHERE Id = {0} LIMIT 1", dto.MemberUserId.Value)
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync();
-                if (latestPoints != null)
+                if (purchase.Quantity + dto.Quantity > flashSale.LimitPerUser)
                 {
-                    remainingPoints = latestPoints.Points;
+                    if (transaction != null) await transaction.RollbackAsync();
+                    return ApiResponse.Error<OrderDto>($"每人限购 {flashSale.LimitPerUser} 件，您已达购买上限");
                 }
+
+                purchase.Quantity += dto.Quantity;
+                purchase.UpdatedAt = DateTime.Now;
             }
 
             var order = new Order
