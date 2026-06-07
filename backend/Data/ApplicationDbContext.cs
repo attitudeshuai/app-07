@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<CheckInRecord> CheckInRecords { get; set; }
     public DbSet<LogisticsTrace> LogisticsTraces { get; set; }
     public DbSet<LogisticsTraceItem> LogisticsTraceItems { get; set; }
+    public DbSet<ProductReview> ProductReviews { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -156,6 +157,40 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<LogisticsTraceItem>()
             .HasIndex(i => i.LogisticsTraceId);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasIndex(r => r.ProductId);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasIndex(r => r.MemberUserId);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasIndex(r => r.OrderId)
+            .IsUnique();
+
+        modelBuilder.Entity<ProductReview>()
+            .HasIndex(r => r.Rating);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasIndex(r => r.CreatedAt);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasOne(r => r.Product)
+            .WithMany(p => p.ProductReviews)
+            .HasForeignKey(r => r.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasOne(r => r.MemberUser)
+            .WithMany(u => u.ProductReviews)
+            .HasForeignKey(r => r.MemberUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ProductReview>()
+            .HasOne(r => r.Order)
+            .WithOne()
+            .HasForeignKey<ProductReview>(r => r.OrderId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 
     public static bool IsUniqueConstraintViolation(Exception? ex)

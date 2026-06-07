@@ -21,6 +21,7 @@ public class OrderDto
     public DateTime UpdatedAt { get; set; }
     public List<OrderHistoryDto> OrderHistories { get; set; } = new();
     public LogisticsTraceDto? LogisticsTrace { get; set; }
+    public bool HasReview { get; set; }
 }
 
 public class OrderHistoryDto

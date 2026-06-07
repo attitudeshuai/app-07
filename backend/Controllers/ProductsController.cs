@@ -70,7 +70,9 @@ public class ProductsController : ControllerBase
                 CategoryId = p.CategoryId,
                 CategoryName = p.Category != null ? p.Category.Name : null,
                 CreatedAt = p.CreatedAt,
-                UpdatedAt = p.UpdatedAt
+                UpdatedAt = p.UpdatedAt,
+                AverageRating = p.ProductReviews.Any() ? Math.Round(p.ProductReviews.Average(r => r.Rating), 2) : 0,
+                TotalReviews = p.ProductReviews.Count
             })
             .ToListAsync();
 
@@ -91,6 +93,7 @@ public class ProductsController : ControllerBase
     {
         var product = await _context.Products
             .Include(p => p.Category)
+            .Include(p => p.ProductReviews)
             .FirstOrDefaultAsync(p => p.Id == id);
 
         if (product == null)
@@ -110,7 +113,9 @@ public class ProductsController : ControllerBase
             CategoryId = product.CategoryId,
             CategoryName = product.Category != null ? product.Category.Name : null,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            AverageRating = product.ProductReviews.Any() ? Math.Round(product.ProductReviews.Average(r => r.Rating), 2) : 0,
+            TotalReviews = product.ProductReviews.Count
         };
 
         return Ok(ApiResponse.Ok(dto));
@@ -154,7 +159,9 @@ public class ProductsController : ControllerBase
             CategoryId = product.CategoryId,
             CategoryName = product.Category != null ? product.Category.Name : null,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            AverageRating = 0,
+            TotalReviews = 0
         };
 
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, ApiResponse.Ok(result, "商品创建成功"));
@@ -202,7 +209,9 @@ public class ProductsController : ControllerBase
             CategoryId = product.CategoryId,
             CategoryName = product.Category != null ? product.Category.Name : null,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            AverageRating = 0,
+            TotalReviews = 0
         };
 
         return Ok(ApiResponse.Ok(result, "商品更新成功"));

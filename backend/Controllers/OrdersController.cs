@@ -84,7 +84,8 @@ public class OrdersController : ControllerBase
                 ShippingCompany = o.ShippingCompany,
                 Remark = o.Remark,
                 CreatedAt = o.CreatedAt,
-                UpdatedAt = o.UpdatedAt
+                UpdatedAt = o.UpdatedAt,
+                HasReview = _context.ProductReviews.Any(r => r.OrderId == o.Id)
             })
             .ToListAsync();
 
@@ -141,7 +142,8 @@ public class OrdersController : ControllerBase
                 Status = h.Status,
                 Remark = h.Remark,
                 CreatedAt = h.CreatedAt
-            }).ToList()
+            }).ToList(),
+            HasReview = await _context.ProductReviews.AnyAsync(r => r.OrderId == order.Id)
         };
 
         if (order.Status == "Shipped" && !string.IsNullOrEmpty(order.TrackingNumber) && !string.IsNullOrEmpty(order.ShippingCompany))
@@ -316,7 +318,8 @@ public class OrdersController : ControllerBase
                 RecipientAddress = order.RecipientAddress,
                 Status = order.Status,
                 CreatedAt = order.CreatedAt,
-                UpdatedAt = order.UpdatedAt
+                UpdatedAt = order.UpdatedAt,
+                HasReview = false
             };
 
             return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, ApiResponse.Ok(result, "订单创建成功"));

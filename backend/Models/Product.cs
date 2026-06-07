@@ -13,4 +13,5 @@ public class Product
     public Category? Category { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    public ICollection<ProductReview> ProductReviews { get; set; } = new List<ProductReview>();
 }

@@ -13,6 +13,8 @@ public class ProductDto
     public string? CategoryName { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public double AverageRating { get; set; }
+    public int TotalReviews { get; set; }
 }
 
 public class CreateProductDto

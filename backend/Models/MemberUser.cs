@@ -21,4 +21,5 @@ public class MemberUser
     public ICollection<PointsRecord> PointsRecords { get; set; } = new List<PointsRecord>();
     public ICollection<Order> Orders { get; set; } = new List<Order>();
     public ICollection<CheckInRecord> CheckInRecords { get; set; } = new List<CheckInRecord>();
+    public ICollection<ProductReview> ProductReviews { get; set; } = new List<ProductReview>();
 }
