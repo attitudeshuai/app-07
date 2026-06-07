@@ -18,6 +18,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PointsRecord> PointsRecords { get; set; }
     public DbSet<MemberLevel> MemberLevels { get; set; }
     public DbSet<Category> Categories { get; set; }
+    public DbSet<FlashSale> FlashSales { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -87,5 +88,29 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Product>()
             .HasIndex(p => p.CategoryId);
+
+        modelBuilder.Entity<FlashSale>()
+            .HasIndex(f => f.ProductId);
+
+        modelBuilder.Entity<FlashSale>()
+            .HasIndex(f => f.StartTime);
+
+        modelBuilder.Entity<FlashSale>()
+            .HasIndex(f => f.EndTime);
+
+        modelBuilder.Entity<FlashSale>()
+            .HasIndex(f => f.IsActive);
+
+        modelBuilder.Entity<FlashSale>()
+            .HasOne(f => f.Product)
+            .WithMany()
+            .HasForeignKey(f => f.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.OrderType);
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.FlashSaleId);
     }
 }

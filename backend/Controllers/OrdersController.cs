@@ -15,11 +15,13 @@ public class OrdersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IMemberLevelService _memberLevelService;
+    private readonly IFlashSaleService _flashSaleService;
 
-    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService)
+    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService)
     {
         _context = context;
         _memberLevelService = memberLevelService;
+        _flashSaleService = flashSaleService;
     }
 
     [HttpGet]
@@ -53,6 +55,8 @@ public class OrdersController : ControllerBase
             {
                 Id = o.Id,
                 OrderNo = o.OrderNo,
+                OrderType = o.OrderType,
+                FlashSaleId = o.FlashSaleId,
                 ProductId = o.ProductId,
                 ProductName = o.ProductName,
                 PointsConsumed = o.PointsConsumed,
@@ -96,6 +100,8 @@ public class OrdersController : ControllerBase
         {
             Id = order.Id,
             OrderNo = order.OrderNo,
+            OrderType = order.OrderType,
+            FlashSaleId = order.FlashSaleId,
             ProductId = order.ProductId,
             ProductName = order.ProductName,
             PointsConsumed = order.PointsConsumed,
@@ -231,6 +237,8 @@ public class OrdersController : ControllerBase
             {
                 Id = order.Id,
                 OrderNo = order.OrderNo,
+                OrderType = order.OrderType,
+                FlashSaleId = order.FlashSaleId,
                 ProductId = order.ProductId,
                 ProductName = order.ProductName,
                 PointsConsumed = order.PointsConsumed,
@@ -343,11 +351,24 @@ public class OrdersController : ControllerBase
             order.Status = "Returned";
             order.UpdatedAt = DateTime.Now;
 
-            var product = await _context.Products.FindAsync(order.ProductId);
-            if (product != null)
+            if (order.OrderType == "FlashSale" && order.FlashSaleId.HasValue)
             {
-                product.Stock += order.Quantity;
-                product.UpdatedAt = DateTime.Now;
+                var flashSale = await _context.FlashSales.FindAsync(order.FlashSaleId.Value);
+                if (flashSale != null)
+                {
+                    flashSale.Stock += order.Quantity;
+                    flashSale.SoldCount = Math.Max(0, flashSale.SoldCount - order.Quantity);
+                    flashSale.UpdatedAt = DateTime.Now;
+                }
+            }
+            else
+            {
+                var product = await _context.Products.FindAsync(order.ProductId);
+                if (product != null)
+                {
+                    product.Stock += order.Quantity;
+                    product.UpdatedAt = DateTime.Now;
+                }
             }
 
             order.OrderHistories.Add(new OrderHistory
@@ -427,11 +448,24 @@ public class OrdersController : ControllerBase
             order.Status = "Cancelled";
             order.UpdatedAt = DateTime.Now;
 
-            var product = await _context.Products.FindAsync(order.ProductId);
-            if (product != null)
+            if (order.OrderType == "FlashSale" && order.FlashSaleId.HasValue)
             {
-                product.Stock += order.Quantity;
-                product.UpdatedAt = DateTime.Now;
+                var flashSale = await _context.FlashSales.FindAsync(order.FlashSaleId.Value);
+                if (flashSale != null)
+                {
+                    flashSale.Stock += order.Quantity;
+                    flashSale.SoldCount = Math.Max(0, flashSale.SoldCount - order.Quantity);
+                    flashSale.UpdatedAt = DateTime.Now;
+                }
+            }
+            else
+            {
+                var product = await _context.Products.FindAsync(order.ProductId);
+                if (product != null)
+                {
+                    product.Stock += order.Quantity;
+                    product.UpdatedAt = DateTime.Now;
+                }
             }
 
             order.OrderHistories.Add(new OrderHistory

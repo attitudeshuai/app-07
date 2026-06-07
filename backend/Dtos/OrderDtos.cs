@@ -4,6 +4,8 @@ public class OrderDto
 {
     public int Id { get; set; }
     public string OrderNo { get; set; } = string.Empty;
+    public string OrderType { get; set; } = string.Empty;
+    public int? FlashSaleId { get; set; }
     public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public int PointsConsumed { get; set; }
