@@ -216,8 +216,88 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("Default member levels created successfully");
     }
 
+    if (!context.Categories.Any())
+    {
+        var digitalCategory = new PointsMall.Models.Category
+        {
+            Name = "数码产品",
+            ParentId = null,
+            SortOrder = 1,
+            IsActive = true
+        };
+
+        var homeCategory = new PointsMall.Models.Category
+        {
+            Name = "家居用品",
+            ParentId = null,
+            SortOrder = 2,
+            IsActive = true
+        };
+
+        var officeCategory = new PointsMall.Models.Category
+        {
+            Name = "办公用品",
+            ParentId = null,
+            SortOrder = 3,
+            IsActive = true
+        };
+
+        context.Categories.AddRange(digitalCategory, homeCategory, officeCategory);
+        context.SaveChanges();
+
+        var earphoneCategory = new PointsMall.Models.Category
+        {
+            Name = "耳机",
+            ParentId = digitalCategory.Id,
+            SortOrder = 1,
+            IsActive = true
+        };
+
+        var phoneCategory = new PointsMall.Models.Category
+        {
+            Name = "手机",
+            ParentId = digitalCategory.Id,
+            SortOrder = 2,
+            IsActive = true
+        };
+
+        var cupCategory = new PointsMall.Models.Category
+        {
+            Name = "水杯",
+            ParentId = homeCategory.Id,
+            SortOrder = 1,
+            IsActive = true
+        };
+
+        var umbrellaCategory = new PointsMall.Models.Category
+        {
+            Name = "雨具",
+            ParentId = homeCategory.Id,
+            SortOrder = 2,
+            IsActive = true
+        };
+
+        var notebookCategory = new PointsMall.Models.Category
+        {
+            Name = "笔记本",
+            ParentId = officeCategory.Id,
+            SortOrder = 1,
+            IsActive = true
+        };
+
+        context.Categories.AddRange(earphoneCategory, phoneCategory, cupCategory, umbrellaCategory, notebookCategory);
+        context.SaveChanges();
+        Console.WriteLine("Default categories created successfully");
+    }
+
     if (!context.Products.Any())
     {
+        var cupCategory = context.Categories.FirstOrDefault(c => c.Name == "水杯" && c.ParentId != null);
+        var notebookCategory = context.Categories.FirstOrDefault(c => c.Name == "笔记本" && c.ParentId != null);
+        var umbrellaCategory = context.Categories.FirstOrDefault(c => c.Name == "雨具" && c.ParentId != null);
+        var earphoneCategory = context.Categories.FirstOrDefault(c => c.Name == "耳机" && c.ParentId != null);
+        var digitalCategory = context.Categories.FirstOrDefault(c => c.Name == "数码产品" && c.ParentId == null);
+
         var sampleProducts = new List<PointsMall.Models.Product>
         {
             new PointsMall.Models.Product
@@ -227,7 +307,8 @@ using (var scope = app.Services.CreateScope())
                 PointsRequired = 500,
                 Stock = 100,
                 ImageUrl = "https://via.placeholder.com/300",
-                IsActive = true
+                IsActive = true,
+                CategoryId = cupCategory != null ? cupCategory.Id : null
             },
             new PointsMall.Models.Product
             {
@@ -236,7 +317,8 @@ using (var scope = app.Services.CreateScope())
                 PointsRequired = 300,
                 Stock = 200,
                 ImageUrl = "https://via.placeholder.com/300",
-                IsActive = true
+                IsActive = true,
+                CategoryId = notebookCategory != null ? notebookCategory.Id : null
             },
             new PointsMall.Models.Product
             {
@@ -245,7 +327,8 @@ using (var scope = app.Services.CreateScope())
                 PointsRequired = 800,
                 Stock = 50,
                 ImageUrl = "https://via.placeholder.com/300",
-                IsActive = true
+                IsActive = true,
+                CategoryId = umbrellaCategory != null ? umbrellaCategory.Id : null
             },
             new PointsMall.Models.Product
             {
@@ -254,7 +337,8 @@ using (var scope = app.Services.CreateScope())
                 PointsRequired = 2000,
                 Stock = 20,
                 ImageUrl = "https://via.placeholder.com/300",
-                IsActive = true
+                IsActive = true,
+                CategoryId = earphoneCategory != null ? earphoneCategory.Id : null
             },
             new PointsMall.Models.Product
             {
@@ -263,7 +347,8 @@ using (var scope = app.Services.CreateScope())
                 PointsRequired = 1500,
                 Stock = 30,
                 ImageUrl = "https://via.placeholder.com/300",
-                IsActive = false
+                IsActive = false,
+                CategoryId = digitalCategory != null ? digitalCategory.Id : null
             }
         };
 

@@ -24,6 +24,7 @@ public class ProductsController : ControllerBase
     public async Task<ActionResult<ApiResponse<PagedResult<ProductDto>>>> GetProducts(
         [FromQuery] string? search = null,
         [FromQuery] bool? isActive = null,
+        [FromQuery] int? categoryId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -37,6 +38,19 @@ public class ProductsController : ControllerBase
         if (isActive.HasValue)
         {
             query = query.Where(p => p.IsActive == isActive.Value);
+        }
+
+        if (categoryId.HasValue)
+        {
+            var childCategoryIds = await _context.Categories
+                .Where(c => c.ParentId == categoryId.Value)
+                .Select(c => c.Id)
+                .ToListAsync();
+
+            var allCategoryIds = new List<int> { categoryId.Value };
+            allCategoryIds.AddRange(childCategoryIds);
+
+            query = query.Where(p => p.CategoryId.HasValue && allCategoryIds.Contains(p.CategoryId.Value));
         }
 
         var total = await query.CountAsync();
@@ -53,6 +67,8 @@ public class ProductsController : ControllerBase
                 Stock = p.Stock,
                 ImageUrl = p.ImageUrl,
                 IsActive = p.IsActive,
+                CategoryId = p.CategoryId,
+                CategoryName = p.Category != null ? p.Category.Name : null,
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt
             })
@@ -73,7 +89,9 @@ public class ProductsController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<ApiResponse<ProductDto>>> GetProduct(int id)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products
+            .Include(p => p.Category)
+            .FirstOrDefaultAsync(p => p.Id == id);
 
         if (product == null)
         {
@@ -89,6 +107,8 @@ public class ProductsController : ControllerBase
             Stock = product.Stock,
             ImageUrl = product.ImageUrl,
             IsActive = product.IsActive,
+            CategoryId = product.CategoryId,
+            CategoryName = product.Category != null ? product.Category.Name : null,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };
@@ -99,6 +119,15 @@ public class ProductsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ApiResponse<ProductDto>>> CreateProduct([FromBody] CreateProductDto dto)
     {
+        if (dto.CategoryId.HasValue)
+        {
+            var category = await _context.Categories.FindAsync(dto.CategoryId.Value);
+            if (category == null)
+            {
+                return BadRequest(ApiResponse.Error<ProductDto>("所选分类不存在"));
+            }
+        }
+
         var product = new Product
         {
             Name = dto.Name,
@@ -106,7 +135,8 @@ public class ProductsController : ControllerBase
             PointsRequired = dto.PointsRequired,
             Stock = dto.Stock,
             ImageUrl = dto.ImageUrl,
-            IsActive = dto.IsActive
+            IsActive = dto.IsActive,
+            CategoryId = dto.CategoryId
         };
 
         _context.Products.Add(product);
@@ -121,6 +151,8 @@ public class ProductsController : ControllerBase
             Stock = product.Stock,
             ImageUrl = product.ImageUrl,
             IsActive = product.IsActive,
+            CategoryId = product.CategoryId,
+            CategoryName = product.Category != null ? product.Category.Name : null,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };
@@ -138,12 +170,22 @@ public class ProductsController : ControllerBase
             return NotFound(ApiResponse.Error<ProductDto>("商品不存在"));
         }
 
+        if (dto.CategoryId.HasValue)
+        {
+            var category = await _context.Categories.FindAsync(dto.CategoryId.Value);
+            if (category == null)
+            {
+                return BadRequest(ApiResponse.Error<ProductDto>("所选分类不存在"));
+            }
+        }
+
         product.Name = dto.Name;
         product.Description = dto.Description;
         product.PointsRequired = dto.PointsRequired;
         product.Stock = dto.Stock;
         product.ImageUrl = dto.ImageUrl;
         product.IsActive = dto.IsActive;
+        product.CategoryId = dto.CategoryId;
         product.UpdatedAt = DateTime.Now;
 
         await _context.SaveChangesAsync();
@@ -157,6 +199,8 @@ public class ProductsController : ControllerBase
             Stock = product.Stock,
             ImageUrl = product.ImageUrl,
             IsActive = product.IsActive,
+            CategoryId = product.CategoryId,
+            CategoryName = product.Category != null ? product.Category.Name : null,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };

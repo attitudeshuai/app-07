@@ -17,6 +17,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<MemberUser> MemberUsers { get; set; }
     public DbSet<PointsRecord> PointsRecords { get; set; }
     public DbSet<MemberLevel> MemberLevels { get; set; }
+    public DbSet<Category> Categories { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -68,5 +69,23 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<MemberLevel>()
             .HasIndex(l => l.MinPoints);
+
+        modelBuilder.Entity<Category>()
+            .HasIndex(c => c.Name);
+
+        modelBuilder.Entity<Category>()
+            .HasMany(c => c.Children)
+            .WithOne(c => c.Parent)
+            .HasForeignKey(c => c.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Category>()
+            .HasMany(c => c.Products)
+            .WithOne(p => p.Category)
+            .HasForeignKey(p => p.CategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Product>()
+            .HasIndex(p => p.CategoryId);
     }
 }

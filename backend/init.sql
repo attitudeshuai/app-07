@@ -7,6 +7,17 @@ CREATE TABLE IF NOT EXISTS Users (
     UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS Categories (
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL,
+    ParentId INT,
+    SortOrder INT NOT NULL DEFAULT 0,
+    IsActive BOOLEAN DEFAULT TRUE,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (ParentId) REFERENCES Categories(Id) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS Products (
     Id INT AUTO_INCREMENT PRIMARY KEY,
     Name VARCHAR(100) NOT NULL,
@@ -15,8 +26,10 @@ CREATE TABLE IF NOT EXISTS Products (
     Stock INT NOT NULL DEFAULT 0,
     ImageUrl VARCHAR(500),
     IsActive BOOLEAN DEFAULT TRUE,
+    CategoryId INT,
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (CategoryId) REFERENCES Categories(Id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS Orders (
@@ -113,3 +126,55 @@ WHERE NOT EXISTS (SELECT 1 FROM MemberLevels WHERE Name = '黄金');
 INSERT INTO MemberLevels (Name, MinPoints, DiscountRate, Description, SortOrder, IsActive)
 SELECT '钻石', 10000, 0.80, '钻石会员，享受8折优惠', 4, TRUE
 WHERE NOT EXISTS (SELECT 1 FROM MemberLevels WHERE Name = '钻石');
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '数码产品', NULL, 1, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM Categories WHERE Name = '数码产品' AND ParentId IS NULL);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '家居用品', NULL, 2, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM Categories WHERE Name = '家居用品' AND ParentId IS NULL);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '办公用品', NULL, 3, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM Categories WHERE Name = '办公用品' AND ParentId IS NULL);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '耳机', (SELECT Id FROM Categories WHERE Name = '数码产品' AND ParentId IS NULL LIMIT 1), 1, TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM Categories c 
+    WHERE c.Name = '耳机' 
+    AND c.ParentId = (SELECT Id FROM Categories WHERE Name = '数码产品' AND ParentId IS NULL LIMIT 1)
+);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '手机', (SELECT Id FROM Categories WHERE Name = '数码产品' AND ParentId IS NULL LIMIT 1), 2, TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM Categories c 
+    WHERE c.Name = '手机' 
+    AND c.ParentId = (SELECT Id FROM Categories WHERE Name = '数码产品' AND ParentId IS NULL LIMIT 1)
+);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '水杯', (SELECT Id FROM Categories WHERE Name = '家居用品' AND ParentId IS NULL LIMIT 1), 1, TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM Categories c 
+    WHERE c.Name = '水杯' 
+    AND c.ParentId = (SELECT Id FROM Categories WHERE Name = '家居用品' AND ParentId IS NULL LIMIT 1)
+);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '雨具', (SELECT Id FROM Categories WHERE Name = '家居用品' AND ParentId IS NULL LIMIT 1), 2, TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM Categories c 
+    WHERE c.Name = '雨具' 
+    AND c.ParentId = (SELECT Id FROM Categories WHERE Name = '家居用品' AND ParentId IS NULL LIMIT 1)
+);
+
+INSERT INTO Categories (Name, ParentId, SortOrder, IsActive)
+SELECT '笔记本', (SELECT Id FROM Categories WHERE Name = '办公用品' AND ParentId IS NULL LIMIT 1), 1, TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM Categories c 
+    WHERE c.Name = '笔记本' 
+    AND c.ParentId = (SELECT Id FROM Categories WHERE Name = '办公用品' AND ParentId IS NULL LIMIT 1)
+);
