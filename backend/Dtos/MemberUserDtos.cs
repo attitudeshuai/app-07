@@ -13,6 +13,7 @@ public class MemberUserDto
     public int ContinuousCheckInDays { get; set; }
     public int TotalCheckInDays { get; set; }
     public DateTime? LastCheckInDate { get; set; }
+    public DateTime? LastLoginDate { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

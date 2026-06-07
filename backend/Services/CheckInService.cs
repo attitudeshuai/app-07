@@ -37,6 +37,15 @@ public class CheckInService : ICheckInService
 
         var today = DateTime.Today;
 
+        if (!user.LastLoginDate.HasValue || user.LastLoginDate.Value.Date < today)
+        {
+            return new CheckInResultDto
+            {
+                Success = false,
+                Message = "请先登录后再进行签到"
+            };
+        }
+
         if (user.LastCheckInDate.HasValue && user.LastCheckInDate.Value.Date == today)
         {
             return new CheckInResultDto
@@ -104,6 +113,24 @@ public class CheckInService : ICheckInService
                 Message = $"签到成功！连续签到{continuousDays}天，获得{pointsEarned}积分"
             };
         }
+        catch (DbUpdateException ex)
+        {
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+
+            if (IsUniqueConstraintViolation(ex))
+            {
+                return new CheckInResultDto
+                {
+                    Success = false,
+                    Message = "今日已签到，请明天再来"
+                };
+            }
+
+            throw;
+        }
         catch
         {
             if (transaction != null)
@@ -122,32 +149,47 @@ public class CheckInService : ICheckInService
             return new CheckInStatusDto
             {
                 CanCheckIn = false,
+                HasLoggedInToday = false,
                 Message = "会员用户不存在"
             };
         }
 
         var today = DateTime.Today;
-        bool canCheckIn = !user.LastCheckInDate.HasValue || user.LastCheckInDate.Value.Date < today;
+        bool hasLoggedInToday = user.LastLoginDate.HasValue && user.LastLoginDate.Value.Date == today;
+        bool hasCheckedInToday = user.LastCheckInDate.HasValue && user.LastCheckInDate.Value.Date == today;
+        bool canCheckIn = hasLoggedInToday && !hasCheckedInToday;
 
-        int nextDayPoints;
-        if (canCheckIn)
+        int nextDayPoints = 0;
+        if (!hasCheckedInToday)
         {
             int nextContinuousDays = CalculateContinuousDays(user.LastCheckInDate, user.ContinuousCheckInDays);
             nextDayPoints = GetPointsForContinuousDay(nextContinuousDays);
         }
+
+        string message;
+        if (!hasLoggedInToday)
+        {
+            message = "请先登录后再签到";
+        }
+        else if (hasCheckedInToday)
+        {
+            message = "今日已签到";
+        }
         else
         {
-            nextDayPoints = 0;
+            message = "今日可以签到";
         }
 
         return new CheckInStatusDto
         {
             CanCheckIn = canCheckIn,
+            HasLoggedInToday = hasLoggedInToday,
             ContinuousDays = user.ContinuousCheckInDays,
             TotalCheckInDays = user.TotalCheckInDays,
             LastCheckInDate = user.LastCheckInDate,
+            LastLoginDate = user.LastLoginDate,
             TodayPoints = nextDayPoints,
-            Message = canCheckIn ? "今日可以签到" : "今日已签到"
+            Message = message
         };
     }
 
@@ -161,7 +203,13 @@ public class CheckInService : ICheckInService
             new CheckInRuleDto { Day = 4, Points = 40 },
             new CheckInRuleDto { Day = 5, Points = 50 },
             new CheckInRuleDto { Day = 6, Points = 60 },
-            new CheckInRuleDto { Day = 7, Points = 100 }
+            new CheckInRuleDto { Day = 7, Points = 70 },
+            new CheckInRuleDto { Day = 14, Points = 105 },
+            new CheckInRuleDto { Day = 30, Points = 185 },
+            new CheckInRuleDto { Day = 60, Points = 275 },
+            new CheckInRuleDto { Day = 100, Points = 395 },
+            new CheckInRuleDto { Day = 200, Points = 595 },
+            new CheckInRuleDto { Day = 365, Points = 925 }
         };
 
         return await Task.FromResult(rules);
@@ -203,16 +251,36 @@ public class CheckInService : ICheckInService
 
     public int GetPointsForContinuousDay(int continuousDay)
     {
-        return continuousDay switch
+        if (continuousDay <= 0)
         {
-            1 => 10,
-            2 => 20,
-            3 => 30,
-            4 => 40,
-            5 => 50,
-            6 => 60,
-            _ => 100
-        };
+            return 0;
+        }
+
+        int points = 0;
+
+        if (continuousDay <= 7)
+        {
+            points = continuousDay * 10;
+        }
+        else if (continuousDay <= 30)
+        {
+            points = 70 + (continuousDay - 7) * 5;
+        }
+        else if (continuousDay <= 100)
+        {
+            points = 185 + (continuousDay - 30) * 3;
+        }
+        else if (continuousDay <= 365)
+        {
+            points = 395 + (continuousDay - 100) * 2;
+        }
+        else
+        {
+            points = 925 + (continuousDay - 365) * 1;
+        }
+
+        const int maxPoints = 1000;
+        return Math.Min(points, maxPoints);
     }
 
     private int CalculateContinuousDays(DateTime? lastCheckInDate, int currentContinuousDays)
@@ -237,5 +305,19 @@ public class CheckInService : ICheckInService
         {
             return 1;
         }
+    }
+
+    private bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        if (ex.InnerException != null)
+        {
+            var message = ex.InnerException.Message.ToLower();
+            return message.Contains("duplicate") ||
+                   message.Contains("unique") ||
+                   message.Contains("duplicate entry") ||
+                   message.Contains("unique constraint") ||
+                   message.Contains("cannot insert duplicate key");
+        }
+        return false;
     }
 }

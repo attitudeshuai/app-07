@@ -24,9 +24,11 @@ public class CheckInResultDto
 public class CheckInStatusDto
 {
     public bool CanCheckIn { get; set; }
+    public bool HasLoggedInToday { get; set; }
     public int ContinuousDays { get; set; }
     public int TotalCheckInDays { get; set; }
     public DateTime? LastCheckInDate { get; set; }
+    public DateTime? LastLoginDate { get; set; }
     public int TodayPoints { get; set; }
     public string Message { get; set; } = string.Empty;
 }
