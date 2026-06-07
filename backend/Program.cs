@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddMemoryCache();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "PointsMall API", Version = "v1" });
@@ -83,6 +84,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IMemberLevelService, MemberLevelService>();
 builder.Services.AddScoped<IFlashSaleService, FlashSaleService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
+builder.Services.AddScoped<ILogisticsService, LogisticsService>();
 
 var app = builder.Build();
 

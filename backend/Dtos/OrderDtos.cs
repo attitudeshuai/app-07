@@ -20,6 +20,7 @@ public class OrderDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public List<OrderHistoryDto> OrderHistories { get; set; } = new();
+    public LogisticsTraceDto? LogisticsTrace { get; set; }
 }
 
 public class OrderHistoryDto

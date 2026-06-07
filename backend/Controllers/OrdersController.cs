@@ -16,12 +16,14 @@ public class OrdersController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly IMemberLevelService _memberLevelService;
     private readonly IFlashSaleService _flashSaleService;
+    private readonly ILogisticsService _logisticsService;
 
-    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService)
+    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService, ILogisticsService logisticsService)
     {
         _context = context;
         _memberLevelService = memberLevelService;
         _flashSaleService = flashSaleService;
+        _logisticsService = logisticsService;
     }
 
     [HttpGet]
@@ -124,7 +126,50 @@ public class OrdersController : ControllerBase
             }).ToList()
         };
 
+        if (order.Status == "Shipped" && !string.IsNullOrEmpty(order.TrackingNumber) && !string.IsNullOrEmpty(order.ShippingCompany))
+        {
+            dto.LogisticsTrace = await _logisticsService.GetLogisticsTraceAsync(order.TrackingNumber, order.ShippingCompany);
+        }
+
         return Ok(ApiResponse.Ok(dto));
+    }
+
+    [HttpGet("{id}/logistics")]
+    public async Task<ActionResult<ApiResponse<LogisticsTraceDto>>> GetOrderLogistics(int id)
+    {
+        var order = await _context.Orders.FindAsync(id);
+
+        if (order == null)
+        {
+            return NotFound(ApiResponse.Error<LogisticsTraceDto>("订单不存在"));
+        }
+
+        if (order.Status != "Shipped")
+        {
+            return BadRequest(ApiResponse.Error<LogisticsTraceDto>("订单未发货，暂无物流信息"));
+        }
+
+        if (string.IsNullOrEmpty(order.TrackingNumber) || string.IsNullOrEmpty(order.ShippingCompany))
+        {
+            return BadRequest(ApiResponse.Error<LogisticsTraceDto>("缺少运单号或物流公司信息"));
+        }
+
+        var trace = await _logisticsService.GetLogisticsTraceAsync(order.TrackingNumber, order.ShippingCompany);
+
+        if (trace == null)
+        {
+            return BadRequest(ApiResponse.Error<LogisticsTraceDto>("查询物流信息失败"));
+        }
+
+        return Ok(ApiResponse.Ok(trace));
+    }
+
+    [HttpGet("logistics/companies")]
+    [AllowAnonymous]
+    public ActionResult<ApiResponse<List<string>>> GetSupportedLogisticsCompanies()
+    {
+        var companies = _logisticsService.GetSupportedCompanies();
+        return Ok(ApiResponse.Ok(companies));
     }
 
     [HttpPost]

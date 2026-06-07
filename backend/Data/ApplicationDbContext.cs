@@ -22,6 +22,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<FlashSale> FlashSales { get; set; }
     public DbSet<FlashSaleUserPurchase> FlashSaleUserPurchases { get; set; }
     public DbSet<CheckInRecord> CheckInRecords { get; set; }
+    public DbSet<LogisticsTrace> LogisticsTraces { get; set; }
+    public DbSet<LogisticsTraceItem> LogisticsTraceItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -141,6 +143,19 @@ public class ApplicationDbContext : DbContext
             .WithOne(r => r.MemberUser)
             .HasForeignKey(r => r.MemberUserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LogisticsTrace>()
+            .HasIndex(t => new { t.TrackingNumber, t.ShippingCompany })
+            .IsUnique();
+
+        modelBuilder.Entity<LogisticsTrace>()
+            .HasMany(t => t.TraceItems)
+            .WithOne(i => i.LogisticsTrace)
+            .HasForeignKey(i => i.LogisticsTraceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LogisticsTraceItem>()
+            .HasIndex(i => i.LogisticsTraceId);
     }
 
     public static bool IsUniqueConstraintViolation(Exception? ex)
