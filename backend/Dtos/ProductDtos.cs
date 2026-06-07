@@ -43,3 +43,22 @@ public class UpdateStockDto
 {
     public int Stock { get; set; }
 }
+
+public class BatchUpdateProductStatusDto
+{
+    public List<int> ProductIds { get; set; } = new();
+    public bool IsActive { get; set; }
+}
+
+public class BatchOperationResultDto
+{
+    public int SuccessCount { get; set; }
+    public int FailCount { get; set; }
+    public List<BatchOperationErrorDto> Errors { get; set; } = new();
+}
+
+public class BatchOperationErrorDto
+{
+    public int Id { get; set; }
+    public string Message { get; set; } = string.Empty;
+}

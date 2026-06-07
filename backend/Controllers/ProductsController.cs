@@ -250,4 +250,51 @@ public class ProductsController : ControllerBase
 
         return Ok(ApiResponse.Ok("商品删除成功"));
     }
+
+    [HttpPut("batch-status")]
+    public async Task<ActionResult<ApiResponse<BatchOperationResultDto>>> BatchUpdateStatus([FromBody] BatchUpdateProductStatusDto dto)
+    {
+        if (dto.ProductIds == null || dto.ProductIds.Count == 0)
+        {
+            return BadRequest(ApiResponse.Error<BatchOperationResultDto>("请选择要操作的商品"));
+        }
+
+        var result = new BatchOperationResultDto();
+        var now = DateTime.Now;
+
+        var products = await _context.Products
+            .Where(p => dto.ProductIds.Contains(p.Id))
+            .ToListAsync();
+
+        var existingIds = products.Select(p => p.Id).ToHashSet();
+        var notFoundIds = dto.ProductIds.Where(id => !existingIds.Contains(id)).ToList();
+
+        foreach (var id in notFoundIds)
+        {
+            result.Errors.Add(new BatchOperationErrorDto { Id = id, Message = "商品不存在" });
+            result.FailCount++;
+        }
+
+        foreach (var product in products)
+        {
+            try
+            {
+                product.IsActive = dto.IsActive;
+                product.UpdatedAt = now;
+                result.SuccessCount++;
+            }
+            catch (Exception ex)
+            {
+                result.Errors.Add(new BatchOperationErrorDto { Id = product.Id, Message = ex.Message });
+                result.FailCount++;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        var actionText = dto.IsActive ? "上架" : "下架";
+        var message = $"批量{actionText}完成：成功 {result.SuccessCount} 条，失败 {result.FailCount} 条";
+
+        return Ok(ApiResponse.Ok(result, message));
+    }
 }
