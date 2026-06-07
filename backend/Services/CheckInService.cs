@@ -10,137 +10,112 @@ namespace PointsMall.Services;
 public class CheckInService : ICheckInService
 {
     private readonly ApplicationDbContext _context;
+    private readonly IPointsService _pointsService;
 
-    public CheckInService(ApplicationDbContext context)
+    public CheckInService(ApplicationDbContext context, IPointsService pointsService)
     {
         _context = context;
+        _pointsService = pointsService;
     }
 
     public async Task<CheckInResultDto> CheckInAsync(int memberUserId)
     {
         var today = DateTime.Today;
 
-        var useTransaction = _context.Database.IsRelational();
-        IDbContextTransaction? transaction = null;
+        var user = await _context.MemberUsers.FindAsync(memberUserId);
+        if (user == null)
+        {
+            return new CheckInResultDto
+            {
+                Success = false,
+                Message = "会员用户不存在"
+            };
+        }
+
+        if (user.Status != "Active")
+        {
+            return new CheckInResultDto
+            {
+                Success = false,
+                Message = "会员状态异常，无法签到"
+            };
+        }
+
+        if (!user.LastLoginDate.HasValue || user.LastLoginDate.Value.Date < today)
+        {
+            return new CheckInResultDto
+            {
+                Success = false,
+                Message = "请先登录后再进行签到"
+            };
+        }
+
+        var hasCheckedInToday = await _context.CheckInRecords
+            .AnyAsync(r => r.MemberUserId == memberUserId && r.CheckInDate == today);
+
+        if (hasCheckedInToday)
+        {
+            return new CheckInResultDto
+            {
+                Success = false,
+                Message = "今日已签到，请明天再来"
+            };
+        }
 
         try
         {
-            if (useTransaction)
+            using (var transaction = await _context.Database.BeginTransactionAsync())
             {
-                transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
-            }
+                try
+                {
+                    int continuousDays = CalculateContinuousDays(user.LastCheckInDate, user.ContinuousCheckInDays);
+                    int pointsEarned = GetPointsForContinuousDay(continuousDays);
 
-            var user = await LockMemberUserAsync(memberUserId);
-            if (user == null)
-            {
-                if (transaction != null)
+                    var addPointsDto = new AddPointsDto
+                    {
+                        MemberUserId = memberUserId,
+                        Points = pointsEarned,
+                        Source = "CheckIn",
+                        Remark = $"连续签到{continuousDays}天，奖励{pointsEarned}积分"
+                    };
+
+                    var pointsRecord = await _pointsService.AddPointsAsync(addPointsDto);
+
+                    user.ContinuousCheckInDays = continuousDays;
+                    user.TotalCheckInDays += 1;
+                    user.LastCheckInDate = today;
+                    user.UpdatedAt = DateTime.Now;
+
+                    var checkInRecord = new CheckInRecord
+                    {
+                        MemberUserId = memberUserId,
+                        CheckInDate = today,
+                        PointsEarned = pointsEarned,
+                        ContinuousDays = continuousDays,
+                        CreatedAt = DateTime.Now
+                    };
+                    _context.CheckInRecords.Add(checkInRecord);
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return new CheckInResultDto
+                    {
+                        Success = true,
+                        PointsEarned = pointsEarned,
+                        ContinuousDays = continuousDays,
+                        TotalPoints = pointsRecord.Balance,
+                        Message = $"签到成功！连续签到{continuousDays}天，获得{pointsEarned}积分"
+                    };
+                }
+                catch
                 {
                     await transaction.RollbackAsync();
+                    throw;
                 }
-                return new CheckInResultDto
-                {
-                    Success = false,
-                    Message = "会员用户不存在"
-                };
             }
-
-            if (user.Status != "Active")
-            {
-                if (transaction != null)
-                {
-                    await transaction.RollbackAsync();
-                }
-                return new CheckInResultDto
-                {
-                    Success = false,
-                    Message = "会员状态异常，无法签到"
-                };
-            }
-
-            if (!user.LastLoginDate.HasValue || user.LastLoginDate.Value.Date < today)
-            {
-                if (transaction != null)
-                {
-                    await transaction.RollbackAsync();
-                }
-                return new CheckInResultDto
-                {
-                    Success = false,
-                    Message = "请先登录后再进行签到"
-                };
-            }
-
-            var hasCheckedInToday = await _context.CheckInRecords
-                .AnyAsync(r => r.MemberUserId == memberUserId && r.CheckInDate == today);
-
-            if (hasCheckedInToday)
-            {
-                if (transaction != null)
-                {
-                    await transaction.RollbackAsync();
-                }
-                return new CheckInResultDto
-                {
-                    Success = false,
-                    Message = "今日已签到，请明天再来"
-                };
-            }
-
-            int continuousDays = CalculateContinuousDays(user.LastCheckInDate, user.ContinuousCheckInDays);
-            int pointsEarned = GetPointsForContinuousDay(continuousDays);
-
-            user.Points += pointsEarned;
-            user.TotalPoints += pointsEarned;
-            user.ContinuousCheckInDays = continuousDays;
-            user.TotalCheckInDays += 1;
-            user.LastCheckInDate = today;
-            user.UpdatedAt = DateTime.Now;
-
-            var checkInRecord = new CheckInRecord
-            {
-                MemberUserId = memberUserId,
-                CheckInDate = today,
-                PointsEarned = pointsEarned,
-                ContinuousDays = continuousDays,
-                CreatedAt = DateTime.Now
-            };
-            _context.CheckInRecords.Add(checkInRecord);
-
-            var pointsRecord = new PointsRecord
-            {
-                MemberUserId = memberUserId,
-                Type = "Income",
-                Points = pointsEarned,
-                Balance = user.Points,
-                Source = "CheckIn",
-                Remark = $"连续签到{continuousDays}天，奖励{pointsEarned}积分",
-                CreatedAt = DateTime.Now
-            };
-            _context.PointsRecords.Add(pointsRecord);
-
-            await _context.SaveChangesAsync();
-
-            if (transaction != null)
-            {
-                await transaction.CommitAsync();
-            }
-
-            return new CheckInResultDto
-            {
-                Success = true,
-                PointsEarned = pointsEarned,
-                ContinuousDays = continuousDays,
-                TotalPoints = user.Points,
-                Message = $"签到成功！连续签到{continuousDays}天，获得{pointsEarned}积分"
-            };
         }
         catch (DbUpdateException ex)
         {
-            if (transaction != null)
-            {
-                await transaction.RollbackAsync();
-            }
-
             if (ApplicationDbContext.IsUniqueConstraintViolation(ex))
             {
                 return new CheckInResultDto
@@ -152,13 +127,13 @@ public class CheckInService : ICheckInService
 
             throw;
         }
-        catch
+        catch (InvalidOperationException ex)
         {
-            if (transaction != null)
+            return new CheckInResultDto
             {
-                await transaction.RollbackAsync();
-            }
-            throw;
+                Success = false,
+                Message = ex.Message
+            };
         }
     }
 

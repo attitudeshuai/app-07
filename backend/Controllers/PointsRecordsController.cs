@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PointsMall.Data;
 using PointsMall.Dtos;
 using PointsMall.Models;
+using PointsMall.Services;
 
 namespace PointsMall.Controllers;
 
@@ -13,10 +15,12 @@ namespace PointsMall.Controllers;
 public class PointsRecordsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IPointsService _pointsService;
 
-    public PointsRecordsController(ApplicationDbContext context)
+    public PointsRecordsController(ApplicationDbContext context, IPointsService pointsService)
     {
         _context = context;
+        _pointsService = pointsService;
     }
 
     [HttpGet]
@@ -85,6 +89,9 @@ public class PointsRecordsController : ControllerBase
                 Source = r.Source,
                 Remark = r.Remark,
                 OrderNo = r.OrderNo,
+                ExpireAt = r.ExpireAt,
+                AvailablePoints = r.AvailablePoints,
+                IsExpired = r.IsExpired,
                 CreatedAt = r.CreatedAt
             })
             .ToListAsync();
@@ -184,5 +191,141 @@ public class PointsRecordsController : ControllerBase
         };
 
         return Ok(ApiResponse.Ok(result));
+    }
+
+    [HttpGet("expiry-summary")]
+    public async Task<ActionResult<ApiResponse<PointsExpirySummaryDto>>> GetExpirySummary(
+        [FromQuery] int? memberUserId = null)
+    {
+        int targetUserId = ValidateAndGetMemberUserId(memberUserId ?? 0);
+        if (targetUserId <= 0)
+        {
+            return Unauthorized(ApiResponse.Error<PointsExpirySummaryDto>("身份验证失败"));
+        }
+
+        var summary = await _pointsService.GetExpirySummaryAsync(targetUserId);
+        return Ok(ApiResponse.Ok(summary));
+    }
+
+    [HttpGet("expiring")]
+    public async Task<ActionResult<ApiResponse<List<ExpiringPointsDto>>>> GetExpiringPoints(
+        [FromQuery] int? memberUserId = null,
+        [FromQuery] int days = 30)
+    {
+        int targetUserId = ValidateAndGetMemberUserId(memberUserId ?? 0);
+        if (targetUserId <= 0)
+        {
+            return Unauthorized(ApiResponse.Error<List<ExpiringPointsDto>>("身份验证失败"));
+        }
+
+        if (days <= 0 || days > 365)
+        {
+            return BadRequest(ApiResponse.Error<List<ExpiringPointsDto>>("天数必须在1-365之间"));
+        }
+
+        var expiringPoints = await _pointsService.GetExpiringPointsAsync(targetUserId, days);
+        return Ok(ApiResponse.Ok(expiringPoints));
+    }
+
+    [HttpGet("notices")]
+    public async Task<ActionResult<ApiResponse<PagedResult<PointsExpiryNoticeDto>>>> GetExpiryNotices(
+        [FromQuery] int? memberUserId = null,
+        [FromQuery] bool? isRead = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        int targetUserId = ValidateAndGetMemberUserId(memberUserId ?? 0);
+        if (targetUserId <= 0)
+        {
+            return Unauthorized(ApiResponse.Error<PagedResult<PointsExpiryNoticeDto>>("身份验证失败"));
+        }
+
+        var result = await _pointsService.GetExpiryNoticesAsync(targetUserId, page, pageSize, isRead);
+        return Ok(ApiResponse.Ok(result));
+    }
+
+    [HttpPut("notices/{id}/read")]
+    public async Task<ActionResult<ApiResponse<object>>> MarkNoticeAsRead(int id, [FromQuery] int? memberUserId = null)
+    {
+        int targetUserId = ValidateAndGetMemberUserId(memberUserId ?? 0);
+        if (targetUserId <= 0)
+        {
+            return Unauthorized(ApiResponse.Error<object>("身份验证失败"));
+        }
+
+        try
+        {
+            await _pointsService.MarkNoticeAsReadAsync(id, targetUserId);
+            return Ok(ApiResponse.Ok<object>(new { message = "标记已读成功" }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(ApiResponse.Error<object>(ex.Message));
+        }
+    }
+
+    [HttpPut("notices/read-all")]
+    public async Task<ActionResult<ApiResponse<object>>> MarkAllNoticesAsRead([FromQuery] int? memberUserId = null)
+    {
+        int targetUserId = ValidateAndGetMemberUserId(memberUserId ?? 0);
+        if (targetUserId <= 0)
+        {
+            return Unauthorized(ApiResponse.Error<object>("身份验证失败"));
+        }
+
+        await _pointsService.MarkAllNoticesAsReadAsync(targetUserId);
+        return Ok(ApiResponse.Ok<object>(new { message = "全部标记已读成功" }));
+    }
+
+    [HttpGet("notices/unread-count")]
+    public async Task<ActionResult<ApiResponse<int>>> GetUnreadNoticeCount(
+        [FromQuery] int? memberUserId = null)
+    {
+        int targetUserId = ValidateAndGetMemberUserId(memberUserId ?? 0);
+        if (targetUserId <= 0)
+        {
+            return Unauthorized(ApiResponse.Error<int>("身份验证失败"));
+        }
+
+        var count = await _pointsService.GetUnreadNoticeCountAsync(targetUserId);
+        return Ok(ApiResponse.Ok(count));
+    }
+
+    private int ValidateAndGetMemberUserId(int requestedUserId)
+    {
+        var roleClaim = User.FindFirst(ClaimTypes.Role);
+        if (roleClaim == null)
+        {
+            return -1;
+        }
+
+        var role = roleClaim.Value;
+
+        if (role == "Admin")
+        {
+            if (requestedUserId <= 0)
+            {
+                return -1;
+            }
+            return requestedUserId;
+        }
+
+        if (role == "Member")
+        {
+            var nameIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (nameIdClaim == null || !int.TryParse(nameIdClaim.Value, out var currentUserId))
+            {
+                return -1;
+            }
+
+            if (requestedUserId > 0 && requestedUserId != currentUserId)
+            {
+                return -1;
+            }
+
+            return currentUserId;
+        }
+
+        return -1;
     }
 }

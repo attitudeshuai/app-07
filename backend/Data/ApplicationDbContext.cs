@@ -25,6 +25,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<LogisticsTrace> LogisticsTraces { get; set; }
     public DbSet<LogisticsTraceItem> LogisticsTraceItems { get; set; }
     public DbSet<ProductReview> ProductReviews { get; set; }
+    public DbSet<PointsExpiryNotice> PointsExpiryNotices { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,6 +70,30 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<PointsRecord>()
             .HasIndex(r => r.Type);
+
+        modelBuilder.Entity<PointsRecord>()
+            .HasIndex(r => r.ExpireAt);
+
+        modelBuilder.Entity<PointsRecord>()
+            .HasIndex(r => r.IsExpired);
+
+        modelBuilder.Entity<PointsRecord>()
+            .HasIndex(r => new { r.MemberUserId, r.IsExpired, r.ExpireAt });
+
+        modelBuilder.Entity<PointsExpiryNotice>()
+            .HasIndex(n => n.MemberUserId);
+
+        modelBuilder.Entity<PointsExpiryNotice>()
+            .HasIndex(n => n.IsRead);
+
+        modelBuilder.Entity<PointsExpiryNotice>()
+            .HasIndex(n => n.ExpireDate);
+
+        modelBuilder.Entity<PointsExpiryNotice>()
+            .HasOne(n => n.MemberUser)
+            .WithMany()
+            .HasForeignKey(n => n.MemberUserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<MemberLevel>()
             .HasIndex(l => l.Name)

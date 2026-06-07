@@ -18,14 +18,16 @@ public class OrdersController : ControllerBase
     private readonly IMemberLevelService _memberLevelService;
     private readonly IFlashSaleService _flashSaleService;
     private readonly ILogisticsService _logisticsService;
+    private readonly IPointsService _pointsService;
     private readonly IConfiguration _configuration;
 
-    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService, ILogisticsService logisticsService, IConfiguration configuration)
+    public OrdersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IFlashSaleService flashSaleService, ILogisticsService logisticsService, IPointsService pointsService, IConfiguration configuration)
     {
         _context = context;
         _memberLevelService = memberLevelService;
         _flashSaleService = flashSaleService;
         _logisticsService = logisticsService;
+        _pointsService = pointsService;
         _configuration = configuration;
     }
 
@@ -258,7 +260,8 @@ public class OrdersController : ControllerBase
             discountRate = await _memberLevelService.GetDiscountRateAsync(memberUser.TotalPoints);
             pointsConsumed = (int)Math.Ceiling(basePoints * discountRate);
 
-            if (memberUser.Points < pointsConsumed)
+            var availablePoints = await _pointsService.GetAvailablePointsAsync(memberUser.Id);
+            if (availablePoints < pointsConsumed)
             {
                 return BadRequest(ApiResponse.Error<OrderDto>("积分不足，无法兑换"));
             }
@@ -302,22 +305,15 @@ public class OrdersController : ControllerBase
 
             if (memberUser != null)
             {
-                memberUser.Points -= pointsConsumed;
-                memberUser.UpdatedAt = DateTime.Now;
-
-                var pointsRecord = new PointsRecord
+                var deductDto = new DeductPointsDto
                 {
                     MemberUserId = memberUser.Id,
-                    Type = "Expense",
                     Points = pointsConsumed,
-                    Balance = memberUser.Points,
                     Source = "Exchange",
                     OrderNo = order.OrderNo,
-                    Remark = $"兑换商品: {product.Name}",
-                    CreatedAt = DateTime.Now
+                    Remark = $"兑换商品: {product.Name}"
                 };
-
-                _context.PointsRecords.Add(pointsRecord);
+                await _pointsService.DeductPointsAsync(deductDto);
             }
 
             await _context.SaveChangesAsync();
@@ -495,26 +491,15 @@ public class OrdersController : ControllerBase
 
             if (order.MemberUserId.HasValue)
             {
-                var memberUser = await _context.MemberUsers.FindAsync(order.MemberUserId.Value);
-                if (memberUser != null)
+                var addDto = new AddPointsDto
                 {
-                    memberUser.Points += order.PointsConsumed;
-                    memberUser.UpdatedAt = DateTime.Now;
-
-                    var pointsRecord = new PointsRecord
-                    {
-                        MemberUserId = memberUser.Id,
-                        Type = "Income",
-                        Points = order.PointsConsumed,
-                        Balance = memberUser.Points,
-                        Source = "Refund",
-                        OrderNo = order.OrderNo,
-                        Remark = "退换货，积分退还",
-                        CreatedAt = DateTime.Now
-                    };
-
-                    _context.PointsRecords.Add(pointsRecord);
-                }
+                    MemberUserId = order.MemberUserId.Value,
+                    Points = order.PointsConsumed,
+                    Source = "Refund",
+                    OrderNo = order.OrderNo,
+                    Remark = "退换货，积分退还"
+                };
+                await _pointsService.AddPointsAsync(addDto);
             }
 
             await _context.SaveChangesAsync();
@@ -599,26 +584,15 @@ public class OrdersController : ControllerBase
 
             if (order.MemberUserId.HasValue)
             {
-                var memberUser = await _context.MemberUsers.FindAsync(order.MemberUserId.Value);
-                if (memberUser != null)
+                var addDto = new AddPointsDto
                 {
-                    memberUser.Points += order.PointsConsumed;
-                    memberUser.UpdatedAt = DateTime.Now;
-
-                    var pointsRecord = new PointsRecord
-                    {
-                        MemberUserId = memberUser.Id,
-                        Type = "Income",
-                        Points = order.PointsConsumed,
-                        Balance = memberUser.Points,
-                        Source = "Refund",
-                        OrderNo = order.OrderNo,
-                        Remark = "订单取消，积分退还",
-                        CreatedAt = DateTime.Now
-                    };
-
-                    _context.PointsRecords.Add(pointsRecord);
-                }
+                    MemberUserId = order.MemberUserId.Value,
+                    Points = order.PointsConsumed,
+                    Source = "Refund",
+                    OrderNo = order.OrderNo,
+                    Remark = "订单取消，积分退还"
+                };
+                await _pointsService.AddPointsAsync(addDto);
             }
 
             await _context.SaveChangesAsync();

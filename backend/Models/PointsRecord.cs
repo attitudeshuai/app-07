@@ -10,6 +10,9 @@ public class PointsRecord
     public string Source { get; set; } = string.Empty;
     public string? Remark { get; set; }
     public string? OrderNo { get; set; }
+    public DateTime? ExpireAt { get; set; }
+    public int AvailablePoints { get; set; } = 0;
+    public bool IsExpired { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public MemberUser? MemberUser { get; set; }
 }

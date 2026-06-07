@@ -106,8 +106,10 @@ builder.Services.AddScoped<IFlashSaleService, FlashSaleService>();
 builder.Services.AddScoped<ICheckInService, CheckInService>();
 builder.Services.AddScoped<ILogisticsService, LogisticsService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IPointsService, PointsService>();
 
 builder.Services.AddHostedService<OrderAutoCompleteService>();
+builder.Services.AddHostedService<PointsExpiryBackgroundService>();
 
 var app = builder.Build();
 
@@ -191,7 +193,10 @@ using (var scope = app.Services.CreateScope())
                     Points = user.Points,
                     Balance = user.Points,
                     Source = "System",
-                    Remark = "初始积分赠送"
+                    Remark = "初始积分赠送",
+                    ExpireAt = DateTime.Now.AddDays(365),
+                    AvailablePoints = user.Points,
+                    IsExpired = false
                 });
             }
             context.MemberUsers.Add(user);

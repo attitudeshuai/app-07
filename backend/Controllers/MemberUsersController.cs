@@ -15,11 +15,13 @@ public class MemberUsersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IMemberLevelService _memberLevelService;
+    private readonly IPointsService _pointsService;
 
-    public MemberUsersController(ApplicationDbContext context, IMemberLevelService memberLevelService)
+    public MemberUsersController(ApplicationDbContext context, IMemberLevelService memberLevelService, IPointsService pointsService)
     {
         _context = context;
         _memberLevelService = memberLevelService;
+        _pointsService = pointsService;
     }
 
     [HttpGet]
@@ -172,68 +174,92 @@ public class MemberUsersController : ControllerBase
             return BadRequest(ApiResponse.Error<MemberUserDto>("手机号已存在"));
         }
 
-        var user = new MemberUser
-        {
-            Username = dto.Username,
-            Nickname = dto.Nickname,
-            Phone = dto.Phone,
-            Email = dto.Email,
-            Avatar = dto.Avatar,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrEmpty(dto.Password) ? "123456" : dto.Password),
-            Points = dto.Points,
-            TotalPoints = dto.Points,
-            Status = dto.Status ?? "Active",
-            CreatedAt = DateTime.Now,
-            UpdatedAt = DateTime.Now
-        };
+        var useTransaction = _context.Database.IsRelational();
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
 
-        if (dto.Points > 0)
+        try
         {
-            user.PointsRecords.Add(new PointsRecord
+            if (useTransaction)
             {
-                Type = "Income",
-                Points = dto.Points,
-                Balance = dto.Points,
-                Source = "Admin",
-                Remark = "初始积分"
-            });
+                transaction = await _context.Database.BeginTransactionAsync();
+            }
+
+            var user = new MemberUser
+            {
+                Username = dto.Username,
+                Nickname = dto.Nickname,
+                Phone = dto.Phone,
+                Email = dto.Email,
+                Avatar = dto.Avatar,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrEmpty(dto.Password) ? "123456" : dto.Password),
+                Points = 0,
+                TotalPoints = 0,
+                Status = dto.Status ?? "Active",
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+
+            _context.MemberUsers.Add(user);
+            await _context.SaveChangesAsync();
+
+            if (dto.Points > 0)
+            {
+                var addDto = new AddPointsDto
+                {
+                    MemberUserId = user.Id,
+                    Points = dto.Points,
+                    Source = "Admin",
+                    Remark = "初始积分"
+                };
+                await _pointsService.AddPointsAsync(addDto);
+            }
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+
+            var result = new MemberUserDto
+            {
+                Id = user.Id,
+                Username = user.Username,
+                Nickname = user.Nickname,
+                Phone = user.Phone,
+                Email = user.Email,
+                Avatar = user.Avatar,
+                Points = user.Points,
+                TotalPoints = user.TotalPoints,
+                ContinuousCheckInDays = user.ContinuousCheckInDays,
+                TotalCheckInDays = user.TotalCheckInDays,
+                LastCheckInDate = user.LastCheckInDate,
+                LastLoginDate = user.LastLoginDate,
+                Status = user.Status,
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt,
+                OrderCount = 0,
+                PointsRecordCount = user.PointsRecords.Count,
+                CheckInRecordCount = 0,
+                LevelName = string.Empty,
+                DiscountRate = 1.0m
+            };
+
+            var createLevel = await _memberLevelService.GetLevelByTotalPointsAsync(user.TotalPoints);
+            if (createLevel != null)
+            {
+                result.LevelName = createLevel.Name;
+                result.DiscountRate = createLevel.DiscountRate;
+            }
+
+            return CreatedAtAction(nameof(GetMemberUser), new { id = user.Id }, ApiResponse.Ok(result));
         }
-
-        _context.MemberUsers.Add(user);
-        await _context.SaveChangesAsync();
-
-        var result = new MemberUserDto
+        catch
         {
-            Id = user.Id,
-            Username = user.Username,
-            Nickname = user.Nickname,
-            Phone = user.Phone,
-            Email = user.Email,
-            Avatar = user.Avatar,
-            Points = user.Points,
-            TotalPoints = user.TotalPoints,
-            ContinuousCheckInDays = user.ContinuousCheckInDays,
-            TotalCheckInDays = user.TotalCheckInDays,
-            LastCheckInDate = user.LastCheckInDate,
-            LastLoginDate = user.LastLoginDate,
-            Status = user.Status,
-            CreatedAt = user.CreatedAt,
-            UpdatedAt = user.UpdatedAt,
-            OrderCount = 0,
-            PointsRecordCount = user.PointsRecords.Count,
-            CheckInRecordCount = 0,
-            LevelName = string.Empty,
-            DiscountRate = 1.0m
-        };
-
-        var createLevel = await _memberLevelService.GetLevelByTotalPointsAsync(user.TotalPoints);
-        if (createLevel != null)
-        {
-            result.LevelName = createLevel.Name;
-            result.DiscountRate = createLevel.DiscountRate;
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+            throw;
         }
-
-        return CreatedAtAction(nameof(GetMemberUser), new { id = user.Id }, ApiResponse.Ok(result));
     }
 
     [HttpPut("{id}")]
@@ -324,9 +350,13 @@ public class MemberUsersController : ControllerBase
             return NotFound(ApiResponse.Error<object>("会员用户不存在"));
         }
 
-        if (dto.Points < 0 && user.Points + dto.Points < 0)
+        if (dto.Points < 0)
         {
-            return BadRequest(ApiResponse.Error<object>("积分不足，无法扣除"));
+            var availablePoints = await _pointsService.GetAvailablePointsAsync(id);
+            if (availablePoints < Math.Abs(dto.Points))
+            {
+                return BadRequest(ApiResponse.Error<object>("可用积分不足，无法扣除"));
+            }
         }
 
         var useTransaction = _context.Database.IsRelational();
@@ -339,33 +369,44 @@ public class MemberUsersController : ControllerBase
                 transaction = await _context.Database.BeginTransactionAsync();
             }
 
-            user.Points += dto.Points;
+            PointsRecord record;
             if (dto.Points > 0)
             {
-                user.TotalPoints += dto.Points;
+                var addDto = new AddPointsDto
+                {
+                    MemberUserId = id,
+                    Points = dto.Points,
+                    Source = "Admin",
+                    Remark = dto.Remark ?? "管理员赠送积分"
+                };
+                record = await _pointsService.AddPointsAsync(addDto);
             }
-            user.UpdatedAt = DateTime.Now;
-
-            var record = new PointsRecord
+            else
             {
-                MemberUserId = id,
-                Type = dto.Points > 0 ? "Income" : "Expense",
-                Points = Math.Abs(dto.Points),
-                Balance = user.Points,
-                Source = "Admin",
-                Remark = dto.Remark ?? (dto.Points > 0 ? "管理员赠送积分" : "管理员扣除积分"),
-                CreatedAt = DateTime.Now
-            };
-
-            _context.PointsRecords.Add(record);
-            await _context.SaveChangesAsync();
+                var deductDto = new DeductPointsDto
+                {
+                    MemberUserId = id,
+                    Points = Math.Abs(dto.Points),
+                    Source = "Admin",
+                    Remark = dto.Remark ?? "管理员扣除积分"
+                };
+                record = await _pointsService.DeductPointsAsync(deductDto);
+            }
 
             if (transaction != null)
             {
                 await transaction.CommitAsync();
             }
 
-            return Ok(ApiResponse.Ok<object>(new { message = "积分调整成功", newBalance = user.Points }));
+            return Ok(ApiResponse.Ok<object>(new { message = "积分调整成功", newBalance = record.Balance }));
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+            return BadRequest(ApiResponse.Error<object>(ex.Message));
         }
         catch
         {
