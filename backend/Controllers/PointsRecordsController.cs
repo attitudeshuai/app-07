@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -191,6 +192,125 @@ public class PointsRecordsController : ControllerBase
         };
 
         return Ok(ApiResponse.Ok(result));
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> ExportPointsRecords(
+        [FromQuery] int? memberUserId = null,
+        [FromQuery] string? type = null,
+        [FromQuery] string? source = null,
+        [FromQuery] string? search = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] string format = "xlsx")
+    {
+        var query = _context.PointsRecords
+            .Include(r => r.MemberUser)
+            .AsQueryable();
+
+        if (memberUserId.HasValue)
+        {
+            query = query.Where(r => r.MemberUserId == memberUserId.Value);
+        }
+
+        if (!string.IsNullOrEmpty(type))
+        {
+            query = query.Where(r => r.Type == type);
+        }
+
+        if (!string.IsNullOrEmpty(source))
+        {
+            query = query.Where(r => r.Source == source);
+        }
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(r =>
+                r.MemberUser!.Username.Contains(search) ||
+                r.MemberUser!.Nickname.Contains(search) ||
+                (r.Remark != null && r.Remark.Contains(search)) ||
+                (r.OrderNo != null && r.OrderNo.Contains(search)));
+        }
+
+        if (startDate.HasValue)
+        {
+            query = query.Where(r => r.CreatedAt >= startDate.Value);
+        }
+
+        if (endDate.HasValue)
+        {
+            query = query.Where(r => r.CreatedAt <= endDate.Value);
+        }
+
+        var records = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new PointsRecordDto
+            {
+                Id = r.Id,
+                MemberUserId = r.MemberUserId,
+                MemberUsername = r.MemberUser != null ? r.MemberUser.Username : null,
+                MemberNickname = r.MemberUser != null ? r.MemberUser.Nickname : null,
+                Type = r.Type,
+                Points = r.Points,
+                Balance = r.Balance,
+                Source = r.Source,
+                Remark = r.Remark,
+                OrderNo = r.OrderNo,
+                ExpireAt = r.ExpireAt,
+                AvailablePoints = r.AvailablePoints,
+                IsExpired = r.IsExpired,
+                CreatedAt = r.CreatedAt
+            })
+            .ToListAsync();
+
+        string fileName = $"积分变动记录_{DateTime.Now:yyyyMMddHHmmss}";
+        string contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+        using (var workbook = new XLWorkbook())
+        {
+            var worksheet = workbook.Worksheets.Add("积分变动记录");
+
+            string[] headers = { "记录ID", "会员ID", "会员账号", "会员昵称", "类型", "积分变动", "变动后余额", "来源", "备注", "订单号", "过期时间", "可用积分", "是否过期", "创建时间" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+                worksheet.Cell(1, i + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                var record = records[i];
+                int row = i + 2;
+
+                worksheet.Cell(row, 1).Value = record.Id;
+                worksheet.Cell(row, 2).Value = record.MemberUserId;
+                worksheet.Cell(row, 3).Value = record.MemberUsername ?? "";
+                worksheet.Cell(row, 4).Value = record.MemberNickname ?? "";
+                worksheet.Cell(row, 5).Value = record.Type == "Income" ? "收入" : record.Type == "Expense" ? "支出" : record.Type == "Expire" ? "过期" : record.Type;
+                worksheet.Cell(row, 6).Value = record.Points;
+                worksheet.Cell(row, 7).Value = record.Balance;
+                worksheet.Cell(row, 8).Value = record.Source;
+                worksheet.Cell(row, 9).Value = record.Remark ?? "";
+                worksheet.Cell(row, 10).Value = record.OrderNo ?? "";
+                worksheet.Cell(row, 11).Value = record.ExpireAt.HasValue ? record.ExpireAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : "";
+                worksheet.Cell(row, 12).Value = record.AvailablePoints;
+                worksheet.Cell(row, 13).Value = record.IsExpired ? "是" : "否";
+                worksheet.Cell(row, 14).Value = record.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
+            }
+
+            worksheet.Columns().AdjustToContents();
+            worksheet.Column(6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            worksheet.Column(7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+            using (var stream = new MemoryStream())
+            {
+                workbook.SaveAs(stream);
+                var content = stream.ToArray();
+                return File(content, contentType, $"{fileName}.xlsx");
+            }
+        }
     }
 
     [HttpGet("expiry-summary")]
